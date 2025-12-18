@@ -65,6 +65,7 @@ type responseLineMsg string
 type responseCompleteMsg struct{}
 type errorMsg struct{ err error }
 type modelLoadedMsg struct{ model string }
+type modelSelectedMsg struct{ model string }
 type modelStatusMsg struct{ loaded bool }
 
 // Model holds the application state
@@ -253,11 +254,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.updateViewport()
 
-	case modelLoadedMsg:
-		// Model selected (not necessarily loaded yet)
+	case modelSelectedMsg:
 		m.currentModel = msg.model
 		saveLastUsedModel(m.currentModel)
 		// Don't set modelIsLoaded - let modelStatusMsg handle that
+
+	case modelLoadedMsg:
+		m.modelIsLoaded = true
+		m.currentModel = msg.model
+		saveLastUsedModel(m.currentModel)
 
 	case modelStatusMsg:
 		m.modelIsLoaded = msg.loaded
@@ -492,10 +497,10 @@ func checkRunningModel() tea.Cmd {
 		// No models running, use last used model
 		lastModel := loadLastUsedModel()
 		if lastModel != "" {
-			return modelLoadedMsg{model: lastModel}
+			return modelSelectedMsg{model: lastModel}
 		}
 
-		return modelLoadedMsg{model: defaultModel}
+		return modelSelectedMsg{model: defaultModel}
 	}
 }
 

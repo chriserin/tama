@@ -182,6 +182,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.WindowSizeMsg:
+		atBottom := m.viewport.AtBottom()
 		m.width = msg.Width
 		m.height = msg.Height
 
@@ -196,6 +197,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.Width = effectiveWidth
 			m.viewport.Height = m.height - 10
 			m.textarea.SetWidth(effectiveWidth - 4)
+
+			if atBottom {
+				m.viewport.GotoBottom()
+			}
 		}
 
 	case tickMsg:

@@ -171,6 +171,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.responseLines = []string{}
 			m.streamBuffer = ""
 
+			// Update viewport to show user message immediately
+			m.updateViewport()
+
 			// Save the model being used
 			saveLastUsedModel(m.currentModel)
 
@@ -216,25 +219,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case responseLineMsg:
-		// Response has started streaming, stop waiting timer
+		// Response received, stop waiting timer
 		m.isWaiting = false
 		m.chatRequested = false
 
-		line := string(msg)
-		m.streamBuffer += line
+		response := string(msg)
+		response = strings.TrimSpace(response)
 
-		// Check if we have a complete line (ends with newline)
-		if strings.HasSuffix(line, "\n") {
-			// Render the complete line as markdown
-			rendered, err := m.renderer.Render(m.streamBuffer)
-			if err != nil {
-				m.responseLines = append(m.responseLines, m.streamBuffer)
-			} else {
-				m.responseLines = append(m.responseLines, rendered)
-			}
-			m.streamBuffer = ""
-			m.updateViewport()
-		}
+		// Add assistant response to conversation history
+		m.messages = append(m.messages, Message{
+			Role:    "assistant",
+			Content: response,
+		})
+
+		// Clear streaming buffer and response lines
+		m.streamBuffer = ""
+		m.responseLines = []string{}
+
+		// Update viewport to show full conversation
+		m.updateViewport()
 
 	case responseCompleteMsg:
 		m.isWaiting = false
@@ -292,8 +295,47 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) updateViewport() {
-	content := strings.Join(m.responseLines, "")
-	m.viewport.SetContent(content)
+	var content strings.Builder
+
+	// Render all messages in the conversation
+	for _, msg := range m.messages {
+		if msg.Role == "user" {
+			// User messages - just show with prefix
+			content.WriteString(lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("12")).
+				Render("You:"))
+			content.WriteString(" ")
+			content.WriteString(msg.Content)
+			content.WriteString("\n\n")
+		} else if msg.Role == "assistant" {
+			// Assistant messages - render as markdown
+			content.WriteString(lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("13")).
+				Render("Assistant:"))
+			content.WriteString("\n")
+			rendered, err := m.renderer.Render(msg.Content)
+			if err != nil {
+				content.WriteString(msg.Content)
+			} else {
+				content.WriteString(rendered)
+			}
+			content.WriteString("\n")
+		}
+	}
+
+	// If currently streaming, show partial response
+	if len(m.responseLines) > 0 {
+		content.WriteString(lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("13")).
+			Render("Assistant:"))
+		content.WriteString("\n")
+		content.WriteString(strings.Join(m.responseLines, ""))
+	}
+
+	m.viewport.SetContent(content.String())
 	m.viewport.GotoBottom()
 }
 

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -96,7 +97,7 @@ func initialModel() model {
 	ta.SetHeight(1)
 	ta.ShowLineNumbers = false
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
-	ta.Cursor.Blink = false
+	ta.Cursor.SetMode(cursor.CursorStatic)
 
 	vp := viewport.New(contentWidth, 20)
 
@@ -127,6 +128,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.FocusMsg:
+		m.textarea.Focus()
+	case tea.BlurMsg:
+		m.textarea.Blur()
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
@@ -295,16 +300,10 @@ func (m model) View() string {
 	var b strings.Builder
 
 	// Calculate effective width (at least contentWidth, or window width if smaller)
-	effectiveWidth := contentWidth
-	if m.width < contentWidth {
-		effectiveWidth = m.width
-	}
+	effectiveWidth := min(m.width, contentWidth)
 
 	// Calculate left padding to center the content block
-	leftPadding := (m.width - effectiveWidth) / 2
-	if leftPadding < 0 {
-		leftPadding = 0
-	}
+	leftPadding := max((m.width-effectiveWidth)/2, 0)
 
 	// Style for positioning content in the center with left padding
 	contentStyle := lipgloss.NewStyle().
@@ -515,6 +514,7 @@ func main() {
 		initialModel(),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
+		tea.WithReportFocus(),
 	)
 
 	if _, err := p.Run(); err != nil {

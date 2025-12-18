@@ -8,11 +8,18 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
 )
 
+// Ollama API types
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
@@ -31,121 +38,424 @@ type ChatResponse struct {
 	Done      bool    `json:"done"`
 }
 
+type StreamResponse struct {
+	Model     string  `json:"model"`
+	CreatedAt string  `json:"created_at"`
+	Message   Message `json:"message"`
+	Done      bool    `json:"done"`
+}
+
+type ModelsResponse struct {
+	Models []struct {
+		Name string `json:"name"`
+	} `json:"models"`
+}
+
 const (
-	ollamaURL    = "http://localhost:11434/api/chat"
-	defaultModel = "gpt-oss:20b"
+	ollamaURL       = "http://localhost:11434/api/chat"
+	ollamaModelsURL = "http://localhost:11434/api/tags"
+	defaultModel    = "gpt-oss:20b"
+	contentWidth    = 100
 )
 
-func main() {
-	fmt.Println("Ollama Chat REPL")
-	fmt.Println("Type your message and press Enter. Type 'exit' or 'quit' to exit.")
-	fmt.Println("Type 'clear' to clear conversation history.")
-	fmt.Println(strings.Repeat("-", 50))
+// Bubbletea messages
+type tickMsg time.Time
+type responseLineMsg string
+type responseCompleteMsg struct{}
+type errorMsg struct{ err error }
+type modelLoadedMsg struct{ model string }
+
+// Model holds the application state
+type model struct {
+	textarea      textarea.Model
+	viewport      viewport.Model
+	messages      []Message
+	currentModel  string
+	err           error
+	width         int
+	height        int
+	ready         bool
+	renderer      *glamour.TermRenderer
+	waitingStart  time.Time
+	isWaiting     bool
+	loadingModel  bool
+	responseLines []string
+	streamBuffer  string
+}
+
+func initialModel() model {
+	ta := textarea.New()
+	ta.Placeholder = "Type your message..."
+	ta.Focus()
+	ta.CharLimit = 0
+	ta.SetWidth(contentWidth - 4)
+	ta.SetHeight(1)
+	ta.ShowLineNumbers = false
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	ta.Cursor.Blink = false
+
+	vp := viewport.New(contentWidth, 20)
 
 	// Initialize markdown renderer
-	r, err := glamour.NewTermRenderer(
+	r, _ := glamour.NewTermRenderer(
 		glamour.WithStandardStyle("tokyo-night"),
-		glamour.WithWordWrap(100),
+		glamour.WithWordWrap(contentWidth),
 	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating markdown renderer: %v\n", err)
-		os.Exit(1)
-	}
 
-	// Conversation history
-	var messages []Message
-
-	// REPL
-	scanner := bufio.NewScanner(os.Stdin)
-	for {
-		fmt.Print("\n> ")
-		if !scanner.Scan() {
-			break
-		}
-
-		input := strings.TrimSpace(scanner.Text())
-		if input == "" {
-			continue
-		}
-
-		// Handle commands
-		switch input {
-		case "exit", "quit":
-			fmt.Println("Goodbye!")
-			return
-		case "clear":
-			messages = []Message{}
-			fmt.Println("Conversation history cleared.")
-			continue
-		}
-
-		// Add user message to history
-		messages = append(messages, Message{
-			Role:    "user",
-			Content: input,
-		})
-
-		// Send request to Ollama
-		response, err := sendChatRequest(messages)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			// Remove the last user message if request failed
-			messages = messages[:len(messages)-1]
-			continue
-		}
-
-		// Add assistant response to history
-		messages = append(messages, Message{
-			Role:    "assistant",
-			Content: response,
-		})
-
-		// Render markdown response
-		rendered, err := r.Render(response)
-		if err != nil {
-			// If markdown rendering fails, just print the raw response
-			fmt.Println("\n" + response)
-		} else {
-			fmt.Print("\n" + rendered)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
-		os.Exit(1)
+	return model{
+		textarea:     ta,
+		viewport:     vp,
+		messages:     []Message{},
+		currentModel: loadLastUsedModel(),
+		renderer:     r,
 	}
 }
 
-func sendChatRequest(messages []Message) (string, error) {
-	// Create request body
-	reqBody := ChatRequest{
-		Model:    defaultModel,
-		Messages: messages,
-		Stream:   false,
+func (m model) Init() tea.Cmd {
+	return checkRunningModel()
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyCtrlC, tea.KeyEsc:
+			return m, tea.Quit
+		case tea.KeyEnter:
+			if !m.textarea.Focused() {
+				m.textarea.Focus()
+				return m, nil
+			}
+			// Send message
+			input := strings.TrimSpace(m.textarea.Value())
+			if input == "" {
+				return m, nil
+			}
+			// Handle commands
+			if input == "clear" {
+				m.messages = []Message{}
+				m.viewport.SetContent("")
+				m.textarea.Reset()
+				return m, nil
+			}
+			if input == "exit" || input == "quit" {
+				return m, tea.Quit
+			}
+
+			// Add user message
+			m.messages = append(m.messages, Message{
+				Role:    "user",
+				Content: input,
+			})
+			m.textarea.Reset()
+			m.isWaiting = true
+			m.waitingStart = time.Now()
+			m.responseLines = []string{}
+			m.streamBuffer = ""
+
+			// Save the model being used
+			saveLastUsedModel(m.currentModel)
+
+			return m, tea.Batch(
+				sendChatRequestCmd(m.messages, m.currentModel),
+				tickCmd(),
+			)
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+		// Calculate effective width (at least contentWidth, or window width if smaller)
+		effectiveWidth := min(m.width, contentWidth)
+
+		if !m.ready {
+			m.viewport = viewport.New(effectiveWidth, m.height-10)
+			m.textarea.SetWidth(effectiveWidth - 4)
+			m.ready = true
+		} else {
+			m.viewport.Width = effectiveWidth
+			m.viewport.Height = m.height - 10
+			m.textarea.SetWidth(effectiveWidth - 4)
+		}
+
+	case tickMsg:
+		if m.isWaiting || m.loadingModel {
+			return m, tickCmd()
+		}
+
+	case responseLineMsg:
+		line := string(msg)
+		m.streamBuffer += line
+
+		// Check if we have a complete line (ends with newline)
+		if strings.HasSuffix(line, "\n") {
+			// Render the complete line as markdown
+			rendered, err := m.renderer.Render(m.streamBuffer)
+			if err != nil {
+				m.responseLines = append(m.responseLines, m.streamBuffer)
+			} else {
+				m.responseLines = append(m.responseLines, rendered)
+			}
+			m.streamBuffer = ""
+			m.updateViewport()
+		}
+
+	case responseCompleteMsg:
+		m.isWaiting = false
+		// Render any remaining content in the buffer
+		if m.streamBuffer != "" {
+			rendered, err := m.renderer.Render(m.streamBuffer)
+			if err != nil {
+				m.responseLines = append(m.responseLines, m.streamBuffer)
+			} else {
+				m.responseLines = append(m.responseLines, rendered)
+			}
+			m.streamBuffer = ""
+		}
+		m.updateViewport()
+
+	case modelLoadedMsg:
+		m.currentModel = msg.model
+		m.loadingModel = false
+		saveLastUsedModel(m.currentModel)
+
+	case errorMsg:
+		m.err = msg.err
+		m.isWaiting = false
+		m.loadingModel = false
+		return m, nil
 	}
 
-	jsonData, err := json.Marshal(reqBody)
+	m.textarea, cmd = m.textarea.Update(msg)
+	lines := m.textarea.LineInfo().Height
+	m.textarea.SetHeight(lines)
+	//key msg for InputEnd
+	inputStartKeyMsg := tea.KeyMsg{Type: tea.KeyCtrlA}
+	inputEndKeyMsg := tea.KeyMsg{Type: tea.KeyCtrlE}
+	m.textarea, _ = m.textarea.Update(inputStartKeyMsg)
+	m.textarea, _ = m.textarea.Update(inputEndKeyMsg)
+	cmds = append(cmds, cmd)
+
+	m.viewport, cmd = m.viewport.Update(msg)
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
+}
+
+func (m *model) updateViewport() {
+	content := strings.Join(m.responseLines, "")
+	m.viewport.SetContent(content)
+	m.viewport.GotoBottom()
+}
+
+func (m model) View() string {
+	if !m.ready {
+		return "Initializing..."
+	}
+
+	var b strings.Builder
+
+	// Calculate effective width (at least contentWidth, or window width if smaller)
+	effectiveWidth := contentWidth
+	if m.width < contentWidth {
+		effectiveWidth = m.width
+	}
+
+	// Calculate left padding to center the content block
+	leftPadding := (m.width - effectiveWidth) / 2
+	if leftPadding < 0 {
+		leftPadding = 0
+	}
+
+	// Style for positioning content in the center with left padding
+	contentStyle := lipgloss.NewStyle().
+		PaddingLeft(leftPadding)
+
+	// Header with model name
+	header := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("205")).
+		Render(fmt.Sprintf("Ollama Chat REPL - Current Model: %s", m.currentModel))
+
+	// Timer display
+	var timerStr string
+	if m.isWaiting {
+		elapsed := time.Since(m.waitingStart)
+		timerStr = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Render(fmt.Sprintf("⏱  Waiting: %.1fs", elapsed.Seconds()))
+	} else if m.loadingModel {
+		elapsed := time.Since(m.waitingStart)
+		timerStr = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Render(fmt.Sprintf("⏱  Loading model: %.1fs", elapsed.Seconds()))
+	}
+
+	// Apply padding to center content
+	b.WriteString(contentStyle.Render(header))
+	b.WriteString("\n")
+	if timerStr != "" {
+		b.WriteString(contentStyle.Render(timerStr))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+
+	// Viewport with left padding
+	viewportContent := m.viewport.View()
+	b.WriteString(contentStyle.Render(viewportContent))
+	b.WriteString("\n\n")
+
+	// Input area with left padding and minimum width
+	textareaView := m.textarea.View()
+	textareaStyled := lipgloss.NewStyle().
+		Width(effectiveWidth).
+		Border(lipgloss.NormalBorder(), true, false, true, false).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1).
+		Render(textareaView)
+	b.WriteString(contentStyle.Render(textareaStyled))
+
+	// Help text
+	help := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Render("\nEnter: send • Ctrl+C: quit • 'clear': clear history")
+	b.WriteString(contentStyle.Render(help))
+
+	if m.err != nil {
+		errStr := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196")).
+			Render(fmt.Sprintf("\nError: %v", m.err))
+		b.WriteString(contentStyle.Render(errStr))
+	}
+
+	return b.String()
+}
+
+// Commands
+func tickCmd() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+func sendChatRequestCmd(messages []Message, modelName string) tea.Cmd {
+	return func() tea.Msg {
+		reqBody := ChatRequest{
+			Model:    modelName,
+			Messages: messages,
+			Stream:   true,
+		}
+
+		jsonData, err := json.Marshal(reqBody)
+		if err != nil {
+			return errorMsg{err: fmt.Errorf("failed to marshal request: %w", err)}
+		}
+
+		resp, err := http.Post(ollamaURL, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			return errorMsg{err: fmt.Errorf("failed to send request: %w", err)}
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return errorMsg{err: fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))}
+		}
+
+		// Stream the response
+		scanner := bufio.NewScanner(resp.Body)
+		var fullResponse strings.Builder
+
+		for scanner.Scan() {
+			var streamResp StreamResponse
+			if err := json.Unmarshal(scanner.Bytes(), &streamResp); err != nil {
+				continue
+			}
+
+			if streamResp.Message.Content != "" {
+				fullResponse.WriteString(streamResp.Message.Content)
+			}
+		}
+
+		// Send the complete response
+		content := fullResponse.String()
+		return responseLineMsg(content + "\n")
+	}
+}
+
+func checkRunningModel() tea.Cmd {
+	return func() tea.Msg {
+		resp, err := http.Get(ollamaModelsURL)
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		defer resp.Body.Close()
+
+		var modelsResp ModelsResponse
+		if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err != nil {
+			return errorMsg{err: err}
+		}
+
+		if len(modelsResp.Models) > 0 {
+			return modelLoadedMsg{model: modelsResp.Models[0].Name}
+		}
+
+		// No models running, use last used model
+		lastModel := loadLastUsedModel()
+		if lastModel != "" {
+			return modelLoadedMsg{model: lastModel}
+		}
+
+		return modelLoadedMsg{model: defaultModel}
+	}
+}
+
+// XDG_DATA_HOME functions
+func getDataHome() string {
+	dataHome := os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" {
+		home, _ := os.UserHomeDir()
+		dataHome = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(dataHome, "rama")
+}
+
+func saveLastUsedModel(modelName string) error {
+	dataDir := getDataHome()
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return err
+	}
+
+	filePath := filepath.Join(dataDir, "last-model")
+	return os.WriteFile(filePath, []byte(modelName), 0644)
+}
+
+func loadLastUsedModel() string {
+	filePath := filepath.Join(getDataHome(), "last-model")
+	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return defaultModel
 	}
-
-	// Send HTTP request
-	resp, err := http.Post(ollamaURL, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
+	model := strings.TrimSpace(string(data))
+	if model == "" {
+		return defaultModel
 	}
-	defer resp.Body.Close()
+	return model
+}
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
+func main() {
+	p := tea.NewProgram(
+		initialModel(),
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+	)
+
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
-
-	// Parse response
-	var chatResp ChatResponse
-	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return chatResp.Message.Content, nil
 }

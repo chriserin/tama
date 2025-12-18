@@ -52,8 +52,8 @@ type ModelsResponse struct {
 }
 
 const (
-	ollamaURL       = "http://localhost:11434/api/chat"
-	ollamaModelsURL = "http://localhost:11434/api/tags"
+	ollamaChatURL   = "http://localhost:11434/api/chat"
+	ollamaModelsURL = "http://localhost:11434/api/ps"
 	defaultModel    = "gpt-oss:20b"
 	contentWidth    = 100
 )
@@ -64,6 +64,7 @@ type responseLineMsg string
 type responseCompleteMsg struct{}
 type errorMsg struct{ err error }
 type modelLoadedMsg struct{ model string }
+type modelStatusMsg struct{ loaded bool }
 
 // Model holds the application state
 type model struct {
@@ -71,13 +72,16 @@ type model struct {
 	viewport      viewport.Model
 	messages      []Message
 	currentModel  string
+	modelIsLoaded bool
 	err           error
 	width         int
 	height        int
 	ready         bool
 	renderer      *glamour.TermRenderer
+	loadingStart  time.Time
 	waitingStart  time.Time
 	isWaiting     bool
+	chatRequested bool
 	loadingModel  bool
 	responseLines []string
 	streamBuffer  string
@@ -112,7 +116,10 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return checkRunningModel()
+	return tea.Batch(
+		checkRunningModel(),
+		checkModelStatus(m.currentModel),
+	)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -151,8 +158,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Content: input,
 			})
 			m.textarea.Reset()
-			m.isWaiting = true
-			m.waitingStart = time.Now()
+			m.loadingModel = true
+			m.modelIsLoaded = false
+			m.loadingStart = time.Now()
+			m.isWaiting = false
+			m.chatRequested = true
 			m.responseLines = []string{}
 			m.streamBuffer = ""
 
@@ -161,6 +171,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			return m, tea.Batch(
 				sendChatRequestCmd(m.messages, m.currentModel),
+				checkModelStatus(m.currentModel),
 				tickCmd(),
 			)
 		}
@@ -183,11 +194,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tickMsg:
+		var tickCmds []tea.Cmd
 		if m.isWaiting || m.loadingModel {
-			return m, tickCmd()
+			tickCmds = append(tickCmds, tickCmd())
+		}
+		if m.loadingModel {
+			tickCmds = append(tickCmds, checkModelStatus(m.currentModel))
+		}
+		if len(tickCmds) > 0 {
+			return m, tea.Batch(tickCmds...)
 		}
 
 	case responseLineMsg:
+		// Response has started streaming, stop waiting timer
+		m.isWaiting = false
+		m.chatRequested = false
+
 		line := string(msg)
 		m.streamBuffer += line
 
@@ -219,9 +241,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateViewport()
 
 	case modelLoadedMsg:
+		// Model selected (not necessarily loaded yet)
 		m.currentModel = msg.model
-		m.loadingModel = false
 		saveLastUsedModel(m.currentModel)
+		// Don't set modelIsLoaded - let modelStatusMsg handle that
+
+	case modelStatusMsg:
+		m.modelIsLoaded = msg.loaded
+		if msg.loaded {
+			// Model is now loaded, transition to waiting for response
+			m.loadingModel = false
+			if m.chatRequested {
+				m.isWaiting = true
+				m.waitingStart = time.Now()
+			}
+		}
+		// If not loaded yet, keep polling (tickMsg will continue)
 
 	case errorMsg:
 		m.err = msg.err
@@ -276,23 +311,27 @@ func (m model) View() string {
 		PaddingLeft(leftPadding)
 
 	// Header with model name
+	modelStatus := m.currentModel
+	if !m.modelIsLoaded {
+		modelStatus += " (not loaded)"
+	}
 	header := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("205")).
-		Render(fmt.Sprintf("Ollama Chat REPL - Current Model: %s", m.currentModel))
+		Render(fmt.Sprintf("Ollama Chat REPL - Current Model: %s", modelStatus))
 
 	// Timer display
 	var timerStr string
-	if m.isWaiting {
-		elapsed := time.Since(m.waitingStart)
-		timerStr = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Render(fmt.Sprintf("⏱  Waiting: %.1fs", elapsed.Seconds()))
-	} else if m.loadingModel {
-		elapsed := time.Since(m.waitingStart)
+	if m.loadingModel {
+		elapsed := time.Since(m.loadingStart)
 		timerStr = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Render(fmt.Sprintf("⏱  Loading model: %.1fs", elapsed.Seconds()))
+	} else if m.isWaiting {
+		elapsed := time.Since(m.waitingStart)
+		timerStr = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Render(fmt.Sprintf("⏱  Waiting for response: %.1fs", elapsed.Seconds()))
 	}
 
 	// Apply padding to center content
@@ -355,7 +394,7 @@ func sendChatRequestCmd(messages []Message, modelName string) tea.Cmd {
 			return errorMsg{err: fmt.Errorf("failed to marshal request: %w", err)}
 		}
 
-		resp, err := http.Post(ollamaURL, "application/json", bytes.NewBuffer(jsonData))
+		resp, err := http.Post(ollamaChatURL, "application/json", bytes.NewBuffer(jsonData))
 		if err != nil {
 			return errorMsg{err: fmt.Errorf("failed to send request: %w", err)}
 		}
@@ -411,6 +450,30 @@ func checkRunningModel() tea.Cmd {
 		}
 
 		return modelLoadedMsg{model: defaultModel}
+	}
+}
+
+func checkModelStatus(modelName string) tea.Cmd {
+	return func() tea.Msg {
+		resp, err := http.Get(ollamaModelsURL)
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		defer resp.Body.Close()
+
+		var modelsResp ModelsResponse
+		if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err != nil {
+			return errorMsg{err: err}
+		}
+
+		// Check if the specific model is loaded
+		for _, m := range modelsResp.Models {
+			if m.Name == modelName {
+				return modelStatusMsg{loaded: true}
+			}
+		}
+
+		return modelStatusMsg{loaded: false}
 	}
 }
 

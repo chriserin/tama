@@ -173,14 +173,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.textarea.Focus()
 				return m, nil
 			}
-			// Handle 'K' key to scroll to top of current message pair
+			// Handle 'K' key to scroll to top or move to previous message pair
 			if len(msg.Runes) == 1 && msg.Runes[0] == 'K' && m.mode == ReadMode {
-				m.viewport.GotoTop()
+				if m.viewport.AtTop() && m.currentPairIndex > 0 {
+					// At top, move to previous message pair
+					m.currentPairIndex--
+					m.updateViewport()
+					m.viewport.GotoTop()
+				} else {
+					// Not at top, scroll to top
+					m.viewport.GotoTop()
+				}
 				return m, nil
 			}
-			// Handle 'J' key to scroll to bottom of current message pair
+			// Handle 'J' key to scroll to bottom or move to next message pair
 			if len(msg.Runes) == 1 && msg.Runes[0] == 'J' && m.mode == ReadMode {
-				m.viewport.GotoBottom()
+				if m.viewport.AtBottom() && m.currentPairIndex < len(m.messagePairs)-1 {
+					// At bottom, move to next message pair
+					m.currentPairIndex++
+					m.updateViewport()
+					m.viewport.GotoTop()
+				} else {
+					// Not at bottom, scroll to bottom
+					m.viewport.GotoBottom()
+				}
 				return m, nil
 			}
 		case tea.KeyEnter:
@@ -348,7 +364,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Only update components based on current mode
-	if m.mode == PromptMode {
+	switch m.mode {
+	case PromptMode:
 		m.textarea, cmd = m.textarea.Update(msg)
 		lines := m.textarea.LineInfo().Height
 		m.textarea.SetHeight(lines)
@@ -361,7 +378,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Recalculate viewport height when textarea height changes
 		m.viewport.Height = m.calculateViewportHeight()
-	} else if m.mode == ReadMode {
+	case ReadMode:
 		m.viewport, cmd = m.viewport.Update(msg)
 		cmds = append(cmds, cmd)
 	}

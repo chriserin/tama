@@ -269,7 +269,7 @@ func TestScrollToTopOfCurrentMessagePair(t *testing.T) {
 	m.updateViewport()
 
 	// Scroll down in the viewport
-	m.viewport.LineDown(5)
+	m.viewport.ScrollDown(5)
 
 	// When the user presses "K"
 	kMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}}
@@ -312,4 +312,82 @@ func TestScrollToBottomOfMostRecentMessagePair(t *testing.T) {
 	// Then the viewport should be scrolled to the bottom
 	assert.True(t, m.viewport.AtBottom(), "Viewport should be at bottom")
 	assert.NotEqual(t, initialOffset, m.viewport.YOffset, "YOffset should have changed from initial position")
+}
+
+// Scenario 10: Move to next message pair
+func TestMoveToNextMessagePair(t *testing.T) {
+	// Given a running rama in read mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// Switch to read mode
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	updatedModel, _ = m.Update(escMsg)
+	m = updatedModel.(model)
+
+	// And the user has sent two request messages and received two responses
+	m.messagePairs = []MessagePair{
+		{Request: "First question", Response: "First answer"},
+		{Request: "Second question", Response: "Second answer"},
+	}
+
+	// And the focus is on the first message pair
+	m.currentPairIndex = 0
+	m.updateViewport()
+
+	// And already at the bottom
+	m.viewport.GotoBottom()
+
+	// When the user presses "J"
+	jMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}}
+	updatedModel, _ = m.Update(jMsg)
+	m = updatedModel.(model)
+
+	// Then the focus should move to the second message pair
+	assert.Equal(t, 1, m.currentPairIndex, "Should move to second message pair")
+
+	// And the viewport should show the second pair
+	viewportContent := m.viewport.View()
+	assert.Contains(t, viewportContent, "Second question", "Should show second message pair")
+}
+
+// Scenario 11: Move to previous message pair
+func TestMoveToPreviousMessagePair(t *testing.T) {
+	// Given a running rama in read mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// Switch to read mode
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	updatedModel, _ = m.Update(escMsg)
+	m = updatedModel.(model)
+
+	// And the user has sent two request messages and received two responses
+	m.messagePairs = []MessagePair{
+		{Request: "First question", Response: "First answer"},
+		{Request: "Second question", Response: "Second answer"},
+	}
+
+	// And the focus is on the second message pair
+	m.currentPairIndex = 1
+	m.updateViewport()
+
+	// And already at the top
+	m.viewport.GotoTop()
+
+	// When the user presses "K"
+	kMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}}
+	updatedModel, _ = m.Update(kMsg)
+	m = updatedModel.(model)
+
+	// Then the focus should move to the first message pair
+	assert.Equal(t, 0, m.currentPairIndex, "Should move to first message pair")
+
+	// And the viewport should show the first pair
+	viewportContent := m.viewport.View()
+	assert.Contains(t, viewportContent, "First question", "Should show first message pair")
 }

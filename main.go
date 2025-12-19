@@ -217,9 +217,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Calculate effective width (at least contentWidth, or window width if smaller)
 		effectiveWidth := min(m.width, contentWidth)
+		viewportHeight := m.calculateViewportHeight()
 
 		if !m.ready {
-			m.viewport = viewport.New(effectiveWidth, m.height-10)
+			m.viewport = viewport.New(effectiveWidth, viewportHeight)
 			m.textarea.SetWidth(effectiveWidth - 4)
 			m.ready = true
 			r, _ := glamour.NewTermRenderer(
@@ -229,7 +230,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.renderer = r
 		} else {
 			m.viewport.Width = effectiveWidth
-			m.viewport.Height = m.height - 10
+			m.viewport.Height = viewportHeight
 			m.textarea.SetWidth(effectiveWidth - 4)
 
 			if atBottom {
@@ -330,12 +331,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textarea, _ = m.textarea.Update(inputStartKeyMsg)
 		m.textarea, _ = m.textarea.Update(inputEndKeyMsg)
 		cmds = append(cmds, cmd)
+
+		// Recalculate viewport height when textarea height changes
+		m.viewport.Height = m.calculateViewportHeight()
 	} else if m.mode == ReadMode {
 		m.viewport, cmd = m.viewport.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m *model) calculateViewportHeight() int {
+	// Layout: RAMA line (1) + blank (1) + viewport + blank (1) + input borders (2) + textarea (dynamic) + status (1)
+	fixedHeight := 7
+	textareaHeight := m.textarea.Height()
+	return max(m.height-fixedHeight-textareaHeight, 5)
 }
 
 func (m *model) updateViewport() {
@@ -400,38 +411,20 @@ func (m model) View() string {
 	contentStyle := lipgloss.NewStyle().
 		PaddingLeft(leftPadding)
 
-	// Header with model name
-	modelStatus := m.currentModel
-	if !m.modelIsLoaded {
-		modelStatus += " (not loaded)"
-	}
-	header := lipgloss.NewStyle().
+	// Top: RAMA header with horizontal line on same line (centered)
+	ramaText := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("205")).
-		Render(fmt.Sprintf("Ollama Chat REPL - Current Model: %s", modelStatus))
+		Render("RAMA")
 
-	// Timer display
-	var timerStr string
-	if m.loadingModel {
-		elapsed := time.Since(m.loadingStart)
-		timerStr = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Render(fmt.Sprintf("⏱  Loading model: %.1fs", elapsed.Seconds()))
-	} else if m.isWaiting {
-		elapsed := time.Since(m.waitingStart)
-		timerStr = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Render(fmt.Sprintf("⏱  Waiting for response: %.1fs", elapsed.Seconds()))
-	}
+	// Calculate remaining width for horizontal line (accounting for "RAMA " with space)
+	ramaWidth := 5 // "RAMA " = 4 chars + 1 space
+	lineWidth := max(effectiveWidth-ramaWidth, 0)
+	horizontalLine := strings.Repeat("─", lineWidth)
 
-	// Apply padding to center content
-	b.WriteString(contentStyle.Render(header))
-	b.WriteString("\n")
-	if timerStr != "" {
-		b.WriteString(contentStyle.Render(timerStr))
-		b.WriteString("\n")
-	}
-	b.WriteString("\n")
+	topLine := ramaText + " " + horizontalLine
+	b.WriteString(contentStyle.Render(topLine))
+	b.WriteString("\n\n")
 
 	// Viewport with left padding
 	viewportContent := m.viewport.View()
@@ -447,18 +440,44 @@ func (m model) View() string {
 		Padding(0, 1).
 		Render(textareaView)
 	b.WriteString(contentStyle.Render(textareaStyled))
+	b.WriteString("\n")
 
-	// Help text
-	help := lipgloss.NewStyle().
+	// Bottom: Status line with Model, MSG count, and Timer (centered)
+	modelStatus := fmt.Sprintf("Model: %s", m.currentModel)
+	if !m.modelIsLoaded {
+		modelStatus = fmt.Sprintf("Model: %s (not loaded)", m.currentModel)
+	}
+
+	msgCount := "MSG 0/0"
+
+	var timerStr string
+	if m.loadingModel {
+		elapsed := time.Since(m.loadingStart)
+		timerStr = fmt.Sprintf("⏱  Loading model: %.1fs", elapsed.Seconds())
+	} else if m.isWaiting {
+		elapsed := time.Since(m.waitingStart)
+		timerStr = fmt.Sprintf("⏱  Waiting for response: %.1fs", elapsed.Seconds())
+	}
+
+	// Build status line with elements separated by spaces
+	var statusParts []string
+	statusParts = append(statusParts, modelStatus)
+	statusParts = append(statusParts, msgCount)
+	if timerStr != "" {
+		statusParts = append(statusParts, timerStr)
+	}
+
+	statusLine := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
-		Render("\nEnter: send • Ctrl+C: quit • 'clear': clear history")
-	b.WriteString(contentStyle.Render(help))
+		Render(strings.Join(statusParts, " • "))
+
+	b.WriteString(contentStyle.Render(statusLine))
 
 	if m.err != nil {
 		errStr := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196")).
 			Render(fmt.Sprintf("\nError: %v", m.err))
-		b.WriteString(contentStyle.Render(errStr))
+		b.WriteString(errStr)
 	}
 
 	return b.String()

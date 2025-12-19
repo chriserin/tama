@@ -1,0 +1,92 @@
+Scenario: Start in prompt mode
+  Given a cli prompt
+  When the user starts rama
+  Then the interface should be in prompt mode
+  And the user should see a prompt input
+  And all keystrokes should be directed to the prompt input
+
+Scenario: Exit prompt mode / Enter read mode
+  Given a running rama in prompt mode
+  When the user presses "Esc"
+  Then the interface should switch to read mode
+  And the user should not see a prompt input
+  And all keystrokes should be directed to message navigation
+
+Scenario: Enter prompt mode / Exit read mode
+  Given a running rama in read mode
+  When the user presses "i"
+  Then the interface should switch to prompt mode
+  And the user should see a prompt input
+  And all keystrokes should be directed to the prompt input
+
+Scenario: Display message count and message indicator
+  Refactor Notes: The message struct should have properties of `Request` and `Response` and no mention of role
+  Given a running rama in read mode
+  And the user has sent three request messages and received three responses
+  When the focus is on the second message pair
+  Then the status bar should display "MSG 2/3"
+
+Scenario: Top and bottom of application
+  Given a running rama
+  The top of the application should display RAMA and a horizontal line stretching across the width of the application determined by the effective terminal width
+  The bottom of the application should show the status line which has elements:
+  * "Model: <model name>" (with "(not loaded)" when applicable)
+  * "MSG x/y"
+  * Any operative timer
+
+Scenario: Request message surrounded in border 
+  Given a running rama in read mode
+  When the user has sent a request message
+  Then the request message should be displayed with a top and bottom border
+  And that message should be at the top of the viewport
+  And the word "Request" should be shown in the top border
+  And the word "Response" should be shown in the bottom border
+  and the duration of the response generation should be shown in the bottom border
+  And no "Assistant"/"User" labels should be shown
+
+Scenario: Display one message pair at a time
+  Given a running rama in read mode
+  And the user has sent a request and received a response
+  And this message pair is visible in the viewport
+  When the user sends a second request and receives a second response
+  Then only the second request and response messages should be visible in the viewport
+
+Scenario: Scroll to top of current message pair
+  Given a running rama in read mode
+  And the user has sent one request and received one response
+  When the user presses "K"
+  Then the rama should scroll to the top of the current message pair
+  And the top border of the request message should be at the top of the viewport
+
+Scenario: Scroll to bottom of most recent message pair
+  Given a running rama in read mode
+  And the user has sent one request and received one response
+  When the user presses "J"
+  Then rama should scroll to the bottom of the most recent message pair
+  And the bottom border of the response message should be at the bottom of the viewport
+
+Scenario: Display message count and message indicator
+  Given a running rama in read mode
+  And the user has sent three request messages and received three responses
+  When the focus is on the second message pair
+  Then the status bar should display "MSG 2/3"
+
+Scenario: Move to next message pair
+  Given a running rama in read mode
+  And the user has sent two request messages and received two responses
+  And the focus is on the first message pair
+  And the response of that pair is scrolled to the top
+  When the user presses "J"
+  Then the rama should scroll to the bottom of the current message pair
+  And the response of that pair should be scrolled to the top
+
+Scenario: Move to previous message pair
+  Given a running rama in read mode
+  And the user has sent two request messages and received two responses
+  And the focus is on the second message pair
+  And the response of that pair is scrolled to the top
+  When the user presses "K"
+  Then the rama should scroll to the top of the previous message pair
+  And the border of the request message should be at the top of the viewport
+  And the response of that pair should be scrolled to the top
+

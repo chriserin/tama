@@ -1,0 +1,64 @@
+Feature: Ollama Chat REPL
+
+  Scenario: Center output in terminal
+    Given the REPL is running
+    And the terminal width is 200 columns
+    When the assistant responds to a user message
+    Then the response content should be wrapped to 100 columns wide
+    And the content should be centered with 50 columns of padding on each side
+    And the padding should be equal on both left and right sides
+
+  Scenario: Stream response with markdown rendering
+    Given the REPL is running
+    And I have sent a message to the assistant
+    When the assistant starts generating a response
+    Then the response should be streamed from the Ollama API
+    When the client receives an entire line of the response
+    Then the line should be rendered as markdown
+    And displayed to the user
+
+  Scenario: Display current model name
+    Given the REPL is running
+    And a model is loaded in Ollama
+    When the REPL interface is displayed
+    Then the current model name should be shown in the prompt
+    And the model name should be visible to the user at all times
+
+  Scenario: Save last used model to XDG_DATA_HOME
+    Given the REPL is running
+    And I am using a model named "llama2"
+    When I send a message to the assistant
+    Then the model name "llama2" should be saved to XDG_DATA_HOME/rama/last-model
+    And the file should contain only the model name
+
+  Scenario: Use last used model if no model is running
+    Given the REPL is starting
+    And the last used model "llama2" is saved in XDG_DATA_HOME/rama/last-model
+    When the REPL checks for running models via /api/models
+    And no models are currently running
+    Then the REPL should load the model "llama2"
+    And use it for the chat session
+
+  Scenario: Use already running model
+    Given the REPL is starting
+    When the REPL checks for running models via /api/models
+    And a model "gpt-oss:20b" is currently running
+    Then the REPL should use the running model "gpt-oss:20b"
+    And not load a different model
+
+  Scenario: Display status with timer when loading model
+    Given the REPL is starting a new model "llama2"
+    And the model is not yet ready
+    When the REPL begins waiting for the model to load
+    Then a status message should be displayed showing the model is loading
+    And a timer should be displayed showing elapsed time
+    And the REPL should poll /api/ps every 0.3 seconds
+    And the timer should update until the model is ready
+
+  Scenario: Display timer when waiting for chat response
+    Given the REPL is running
+    And I have sent a message to the assistant
+    When the REPL is waiting for the chat response
+    Then a timer should be displayed showing elapsed time
+    And the timer should update while waiting for the response
+    And the timer should stop when the response starts streaming

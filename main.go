@@ -59,6 +59,14 @@ const (
 	contentWidth    = 100
 )
 
+// Mode represents the current interaction mode
+type Mode int
+
+const (
+	PromptMode Mode = iota
+	ReadMode
+)
+
 // Bubbletea messages
 type tickMsg time.Time
 type responseLineMsg string
@@ -70,6 +78,7 @@ type modelStatusMsg struct{ loaded bool }
 
 // Model holds the application state
 type model struct {
+	mode          Mode
 	textarea      textarea.Model
 	viewport      viewport.Model
 	messages      []Message
@@ -109,6 +118,7 @@ func initialModel() model {
 	)
 
 	return model{
+		mode:         PromptMode,
 		textarea:     ta,
 		viewport:     vp,
 		messages:     []Message{},
@@ -135,8 +145,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textarea.Blur()
 	case tea.KeyMsg:
 		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
+		case tea.KeyCtrlC:
 			return m, tea.Quit
+		case tea.KeyEsc:
+			// Exit prompt mode, enter read mode
+			if m.mode == PromptMode {
+				m.mode = ReadMode
+				m.textarea.Blur()
+				return m, nil
+			}
+			return m, nil
 		case tea.KeyEnter:
 			if !m.textarea.Focused() {
 				m.textarea.Focus()

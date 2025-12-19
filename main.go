@@ -369,11 +369,12 @@ func (m *model) calculateViewportHeight() int {
 func (m *model) updateViewport() {
 	var content strings.Builder
 
-	// Render all message pairs in the conversation
-	for _, pair := range m.messagePairs {
+	// Display only the current message pair
+	if len(m.messagePairs) > 0 && m.currentPairIndex < len(m.messagePairs) {
+		pair := m.messagePairs[m.currentPairIndex]
+
 		// Request message with border (straight line)
 		requestBorderText := "──── Request "
-		fmt.Fprintln(os.Stderr, "Viewport width:", m.viewport.Width)
 		remainingWidth := max(m.viewport.Width-utf8.RuneCountInString(requestBorderText), 0)
 		requestBorder := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).

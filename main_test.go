@@ -193,3 +193,38 @@ func TestRequestMessageSurroundedInBorder(t *testing.T) {
 	assert.NotContains(t, viewportContent, "You:", "Should not contain 'You:' label")
 	assert.NotContains(t, viewportContent, "Assistant:", "Should not contain 'Assistant:' label")
 }
+
+// Scenario 7: Display one message pair at a time
+func TestDisplayOneMessagePairAtATime(t *testing.T) {
+	// Given a running rama in read mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// And the user has sent a request and received a response
+	m.messagePairs = []MessagePair{
+		{Request: "What is Go?", Response: "Go is a programming language"},
+	}
+	m.currentPairIndex = 0
+	m.updateViewport()
+
+	// And this message pair is visible in the viewport
+	viewportContent := m.viewport.View()
+	assert.Contains(t, viewportContent, "What is Go?", "First message pair should be visible")
+
+	// When the user sends a second request and receives a second response
+	m.messagePairs = append(m.messagePairs, MessagePair{
+		Request:  "What is Rust?",
+		Response: "Rust is a systems language",
+	})
+	m.currentPairIndex = 1 // Focus on second pair
+	m.updateViewport()
+
+	// Then only the second request and response messages should be visible
+	viewportContent = m.viewport.View()
+	assert.Contains(t, viewportContent, "What is Rust?", "Second message should be visible")
+	assert.Contains(t, viewportContent, "Rust", "Second response should contain 'Rust'")
+	assert.NotContains(t, viewportContent, "What is Go?", "First message should not be visible")
+	assert.NotContains(t, viewportContent, "programming language", "First response should not be visible")
+}

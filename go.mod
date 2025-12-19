@@ -1,4 +1,4 @@
-module rama
+module tama
 
 go 1.25.5
 

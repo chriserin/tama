@@ -28,12 +28,12 @@ Feature: Ollama Chat REPL
     Given the REPL is running
     And I am using a model named "llama2"
     When I send a message to the assistant
-    Then the model name "llama2" should be saved to XDG_DATA_HOME/rama/last-model
+    Then the model name "llama2" should be saved to XDG_DATA_HOME/tama/last-model
     And the file should contain only the model name
 
   Scenario: Use last used model if no model is running
     Given the REPL is starting
-    And the last used model "llama2" is saved in XDG_DATA_HOME/rama/last-model
+    And the last used model "llama2" is saved in XDG_DATA_HOME/tama/last-model
     When the REPL checks for running models via /api/models
     And no models are currently running
     Then the REPL should load the model "llama2"

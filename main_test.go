@@ -31,7 +31,7 @@ const LoremIpsum = `
 // Scenario 1: Start in prompt mode
 func TestStartInPromptMode(t *testing.T) {
 	// Given a CLI prompt
-	// When the user starts rama
+	// When the user starts tama
 	m := initialModel()
 
 	// Then the interface should be in prompt mode
@@ -46,7 +46,7 @@ func TestStartInPromptMode(t *testing.T) {
 
 // Scenario 2: Exit prompt mode / Enter read mode
 func TestExitPromptModeEnterReadMode(t *testing.T) {
-	// Given a running rama in prompt mode
+	// Given a running tama in prompt mode
 	m := initialModel()
 	assert.Equal(t, PromptMode, m.mode)
 
@@ -67,7 +67,7 @@ func TestExitPromptModeEnterReadMode(t *testing.T) {
 
 // Scenario 3: Enter prompt mode / Exit read mode
 func TestEnterPromptModeExitReadMode(t *testing.T) {
-	// Given a running rama in read mode
+	// Given a running tama in read mode
 	m := initialModel()
 	// First switch to read mode
 	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
@@ -92,7 +92,7 @@ func TestEnterPromptModeExitReadMode(t *testing.T) {
 
 // Scenario 4: Top and bottom of application
 func TestTopAndBottomOfApplication(t *testing.T) {
-	// Given a running rama
+	// Given a running tama
 	m := initialModel()
 	m.ready = true
 	m.width = 100
@@ -106,8 +106,8 @@ func TestTopAndBottomOfApplication(t *testing.T) {
 	// Get the view
 	view := m.View()
 
-	// Then the top should display "RAMA"
-	assert.Contains(t, view, "RAMA", "View should contain RAMA header")
+	// Then the top should display "TAMA"
+	assert.Contains(t, view, "TAMA", "View should contain TAMA header")
 
 	// And a horizontal line stretching across the width
 	assert.Contains(t, view, "─", "View should contain horizontal line")
@@ -127,7 +127,7 @@ func TestTopAndBottomOfApplication(t *testing.T) {
 
 // Scenario 4b: Top and bottom respond to width like content
 func TestTopAndBottomRespondToWidth(t *testing.T) {
-	// Given a rama with a wide window (200 columns)
+	// Given a tama with a wide window (200 columns)
 	m := initialModel()
 	windowMsg := tea.WindowSizeMsg{Width: 200, Height: 30}
 	updatedModel, _ := m.Update(windowMsg)
@@ -138,22 +138,22 @@ func TestTopAndBottomRespondToWidth(t *testing.T) {
 	// The top and bottom should be centered with padding (like the content viewport)
 	// effectiveWidth should be min(200, 100) = 100
 	// leftPadding should be (200 - 100) / 2 = 50
-	// The view should have leading spaces before RAMA and status line
+	// The view should have leading spaces before TAMA and status line
 
-	// Split into lines to check the first line (RAMA line)
+	// Split into lines to check the first line (TAMA line)
 	lines := strings.Split(view, "\n")
 	assert.True(t, len(lines) > 0, "View should have lines")
 
-	// The RAMA line should have leading spaces for centering
-	ramaLine := lines[0]
+	// The TAMA line should have leading spaces for centering
+	tamaLine := lines[0]
 	// With ANSI codes, we can't count exact spaces, but we can verify it's not at position 0
-	// A properly centered line should have spaces before RAMA
-	assert.True(t, strings.Index(ramaLine, "RAMA") > 0, "RAMA should be indented with padding")
+	// A properly centered line should have spaces before TAMA
+	assert.True(t, strings.Index(tamaLine, "TAMA") > 0, "TAMA should be indented with padding")
 }
 
 // Scenario 5: Display message count and message indicator
 func TestDisplayMessageCountAndIndicator(t *testing.T) {
-	// Given a running rama in read mode
+	// Given a running tama in read mode
 	m := initialModel()
 	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
 	updatedModel, _ := m.Update(windowMsg)
@@ -178,7 +178,7 @@ func TestDisplayMessageCountAndIndicator(t *testing.T) {
 
 // Scenario 6: Request message surrounded in border
 func TestRequestMessageSurroundedInBorder(t *testing.T) {
-	// Given a running rama in read mode
+	// Given a running tama in read mode
 	m := initialModel()
 	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
 	updatedModel, _ := m.Update(windowMsg)
@@ -215,7 +215,7 @@ func TestRequestMessageSurroundedInBorder(t *testing.T) {
 
 // Scenario 7: Display one message pair at a time
 func TestDisplayOneMessagePairAtATime(t *testing.T) {
-	// Given a running rama in read mode
+	// Given a running tama in read mode
 	m := initialModel()
 	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
 	updatedModel, _ := m.Update(windowMsg)
@@ -250,7 +250,7 @@ func TestDisplayOneMessagePairAtATime(t *testing.T) {
 
 // Scenario 8: Scroll to top of current message pair
 func TestScrollToTopOfCurrentMessagePair(t *testing.T) {
-	// Given a running rama in read mode
+	// Given a running tama in read mode
 	m := initialModel()
 	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
 	updatedModel, _ := m.Update(windowMsg)
@@ -282,7 +282,7 @@ func TestScrollToTopOfCurrentMessagePair(t *testing.T) {
 
 // Scenario 9: Scroll to bottom of most recent message pair
 func TestScrollToBottomOfMostRecentMessagePair(t *testing.T) {
-	// Given a running rama in read mode
+	// Given a running tama in read mode
 	m := initialModel()
 	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
 	updatedModel, _ := m.Update(windowMsg)
@@ -316,7 +316,7 @@ func TestScrollToBottomOfMostRecentMessagePair(t *testing.T) {
 
 // Scenario 10: Move to next message pair
 func TestMoveToNextMessagePair(t *testing.T) {
-	// Given a running rama in read mode
+	// Given a running tama in read mode
 	m := initialModel()
 	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
 	updatedModel, _ := m.Update(windowMsg)
@@ -355,7 +355,7 @@ func TestMoveToNextMessagePair(t *testing.T) {
 
 // Scenario 11: Move to previous message pair
 func TestMoveToPreviousMessagePair(t *testing.T) {
-	// Given a running rama in read mode
+	// Given a running tama in read mode
 	m := initialModel()
 	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
 	updatedModel, _ := m.Update(windowMsg)

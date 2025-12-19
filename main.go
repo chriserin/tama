@@ -387,7 +387,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) calculateViewportHeight() int {
-	// Layout: RAMA line (1) + viewport + blank (1) + input borders (2) + textarea (dynamic) + status (1)
+	// Layout: TAMA line (1) + viewport + blank (1) + input borders (2) + textarea (dynamic) + status (1)
 	fixedHeight := 5
 	textareaHeight := m.textarea.Height()
 	return max(m.height-fixedHeight-textareaHeight, 5)
@@ -467,18 +467,18 @@ func (m model) View() string {
 	contentStyle := lipgloss.NewStyle().
 		PaddingLeft(leftPadding)
 
-	// Top: RAMA header with horizontal line on same line (centered)
-	ramaText := lipgloss.NewStyle().
+	// Top: TAMA header with horizontal line on same line (centered)
+	tamaText := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("205")).
-		Render("RAMA")
+		Render("TAMA")
 
-	// Calculate remaining width for horizontal line (accounting for "RAMA " with space)
-	ramaWidth := 5 // "RAMA " = 4 chars + 1 space
-	lineWidth := max(effectiveWidth-ramaWidth, 0)
+	// Calculate remaining width for horizontal line (accounting for "TAMA " with space)
+	tamaWidth := 5 // "TAMA " = 4 chars + 1 space
+	lineWidth := max(effectiveWidth-tamaWidth, 0)
 	horizontalLine := strings.Repeat("─", lineWidth)
 
-	topLine := ramaText + " " + horizontalLine
+	topLine := tamaText + " " + horizontalLine
 	b.WriteString(contentStyle.Render(topLine))
 	b.WriteString("\n")
 
@@ -670,7 +670,7 @@ func getDataHome() string {
 		home, _ := os.UserHomeDir()
 		dataHome = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(dataHome, "rama")
+	return filepath.Join(dataHome, "tama")
 }
 
 func saveLastUsedModel(modelName string) error {

@@ -155,6 +155,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, nil
+		case tea.KeyRunes:
+			// Handle 'i' key to enter prompt mode from read mode
+			if len(msg.Runes) == 1 && msg.Runes[0] == 'i' && m.mode == ReadMode {
+				m.mode = PromptMode
+				m.textarea.Focus()
+				return m, nil
+			}
 		case tea.KeyEnter:
 			if !m.textarea.Focused() {
 				m.textarea.Focus()
@@ -312,18 +319,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.textarea, cmd = m.textarea.Update(msg)
-	lines := m.textarea.LineInfo().Height
-	m.textarea.SetHeight(lines)
-	//key msg for InputEnd
-	inputStartKeyMsg := tea.KeyMsg{Type: tea.KeyCtrlA}
-	inputEndKeyMsg := tea.KeyMsg{Type: tea.KeyCtrlE}
-	m.textarea, _ = m.textarea.Update(inputStartKeyMsg)
-	m.textarea, _ = m.textarea.Update(inputEndKeyMsg)
-	cmds = append(cmds, cmd)
-
-	m.viewport, cmd = m.viewport.Update(msg)
-	cmds = append(cmds, cmd)
+	// Only update components based on current mode
+	if m.mode == PromptMode {
+		m.textarea, cmd = m.textarea.Update(msg)
+		lines := m.textarea.LineInfo().Height
+		m.textarea.SetHeight(lines)
+		//key msg for InputEnd
+		inputStartKeyMsg := tea.KeyMsg{Type: tea.KeyCtrlA}
+		inputEndKeyMsg := tea.KeyMsg{Type: tea.KeyCtrlE}
+		m.textarea, _ = m.textarea.Update(inputStartKeyMsg)
+		m.textarea, _ = m.textarea.Update(inputEndKeyMsg)
+		cmds = append(cmds, cmd)
+	} else if m.mode == ReadMode {
+		m.viewport, cmd = m.viewport.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 
 	return m, tea.Batch(cmds...)
 }

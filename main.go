@@ -21,29 +21,35 @@ import (
 )
 
 // Ollama API types
-type Message struct {
+type OllamaMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
 type ChatRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   bool      `json:"stream"`
+	Model    string          `json:"model"`
+	Messages []OllamaMessage `json:"messages"`
+	Stream   bool            `json:"stream"`
 }
 
 type ChatResponse struct {
-	Model     string  `json:"model"`
-	CreatedAt string  `json:"created_at"`
-	Message   Message `json:"message"`
-	Done      bool    `json:"done"`
+	Model     string        `json:"model"`
+	CreatedAt string        `json:"created_at"`
+	Message   OllamaMessage `json:"message"`
+	Done      bool          `json:"done"`
 }
 
 type StreamResponse struct {
-	Model     string  `json:"model"`
-	CreatedAt string  `json:"created_at"`
-	Message   Message `json:"message"`
-	Done      bool    `json:"done"`
+	Model     string        `json:"model"`
+	CreatedAt string        `json:"created_at"`
+	Message   OllamaMessage `json:"message"`
+	Done      bool          `json:"done"`
+}
+
+// Application types
+type MessagePair struct {
+	Request  string
+	Response string
 }
 
 type ModelsResponse struct {
@@ -78,24 +84,25 @@ type modelStatusMsg struct{ loaded bool }
 
 // Model holds the application state
 type model struct {
-	mode          Mode
-	textarea      textarea.Model
-	viewport      viewport.Model
-	messages      []Message
-	currentModel  string
-	modelIsLoaded bool
-	err           error
-	width         int
-	height        int
-	ready         bool
-	renderer      *glamour.TermRenderer
-	loadingStart  time.Time
-	waitingStart  time.Time
-	isWaiting     bool
-	chatRequested bool
-	loadingModel  bool
-	responseLines []string
-	streamBuffer  string
+	mode             Mode
+	textarea         textarea.Model
+	viewport         viewport.Model
+	messagePairs     []MessagePair
+	currentPairIndex int // 0-based index of currently focused message pair
+	currentModel     string
+	modelIsLoaded    bool
+	err              error
+	width            int
+	height           int
+	ready            bool
+	renderer         *glamour.TermRenderer
+	loadingStart     time.Time
+	waitingStart     time.Time
+	isWaiting        bool
+	chatRequested    bool
+	loadingModel     bool
+	responseLines    []string
+	streamBuffer     string
 }
 
 func initialModel() model {
@@ -118,12 +125,13 @@ func initialModel() model {
 	)
 
 	return model{
-		mode:         PromptMode,
-		textarea:     ta,
-		viewport:     vp,
-		messages:     []Message{},
-		currentModel: loadLastUsedModel(),
-		renderer:     r,
+		mode:             PromptMode,
+		textarea:         ta,
+		viewport:         vp,
+		messagePairs:     []MessagePair{},
+		currentPairIndex: 0,
+		currentModel:     loadLastUsedModel(),
+		renderer:         r,
 	}
 }
 
@@ -174,7 +182,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Handle commands
 			if input == "clear" {
-				m.messages = []Message{}
+				m.messagePairs = []MessagePair{}
+				m.currentPairIndex = 0
 				m.viewport.SetContent("")
 				m.textarea.Reset()
 				return m, nil
@@ -183,11 +192,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 
-			// Add user message
-			m.messages = append(m.messages, Message{
-				Role:    "user",
-				Content: input,
-			})
+			// Create new message pair with request
+			newPair := MessagePair{
+				Request:  input,
+				Response: "", // Will be filled when response arrives
+			}
+			m.messagePairs = append(m.messagePairs, newPair)
+			m.currentPairIndex = len(m.messagePairs) - 1 // Focus on the newly created pair
+
 			m.textarea.Reset()
 			m.loadingModel = true
 			m.modelIsLoaded = false
@@ -204,7 +216,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			saveLastUsedModel(m.currentModel)
 
 			return m, tea.Batch(
-				sendChatRequestCmd(m.messages, m.currentModel),
+				sendChatRequestCmd(m.messagePairs, m.currentModel),
 				checkModelStatus(m.currentModel),
 				tickCmd(),
 			)
@@ -264,11 +276,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		response := string(msg)
 		response = strings.TrimSpace(response)
 
-		// Add assistant response to conversation history
-		m.messages = append(m.messages, Message{
-			Role:    "assistant",
-			Content: response,
-		})
+		// Update the current message pair with the response
+		if len(m.messagePairs) > 0 {
+			m.messagePairs[m.currentPairIndex].Response = response
+		}
 
 		// Clear streaming buffer and response lines
 		m.streamBuffer = ""
@@ -352,27 +363,27 @@ func (m *model) calculateViewportHeight() int {
 func (m *model) updateViewport() {
 	var content strings.Builder
 
-	// Render all messages in the conversation
-	for _, msg := range m.messages {
-		if msg.Role == "user" {
-			// User messages - just show with prefix
-			content.WriteString(lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("12")).
-				Render("You:"))
-			content.WriteString(" ")
-			content.WriteString(msg.Content)
-			content.WriteString("\n\n")
-		} else if msg.Role == "assistant" {
-			// Assistant messages - render as markdown
+	// Render all message pairs in the conversation
+	for _, pair := range m.messagePairs {
+		// Request message
+		content.WriteString(lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("12")).
+			Render("You:"))
+		content.WriteString(" ")
+		content.WriteString(pair.Request)
+		content.WriteString("\n\n")
+
+		// Response message (if present)
+		if pair.Response != "" {
 			content.WriteString(lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("13")).
 				Render("Assistant:"))
 			content.WriteString("\n")
-			rendered, err := m.renderer.Render(msg.Content)
+			rendered, err := m.renderer.Render(pair.Response)
 			if err != nil {
-				content.WriteString(msg.Content)
+				content.WriteString(pair.Response)
 			} else {
 				content.WriteString(rendered)
 			}
@@ -448,7 +459,13 @@ func (m model) View() string {
 		modelStatus = fmt.Sprintf("Model: %s (not loaded)", m.currentModel)
 	}
 
-	msgCount := "MSG 0/0"
+	// Calculate message count (1-based indexing for display)
+	totalPairs := len(m.messagePairs)
+	currentDisplay := 0
+	if totalPairs > 0 {
+		currentDisplay = m.currentPairIndex + 1
+	}
+	msgCount := fmt.Sprintf("MSG %d/%d", currentDisplay, totalPairs)
 
 	var timerStr string
 	if m.loadingModel {
@@ -490,11 +507,26 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func sendChatRequestCmd(messages []Message, modelName string) tea.Cmd {
+func sendChatRequestCmd(messagePairs []MessagePair, modelName string) tea.Cmd {
 	return func() tea.Msg {
+		// Convert message pairs to Ollama messages
+		var ollamaMessages []OllamaMessage
+		for _, pair := range messagePairs {
+			ollamaMessages = append(ollamaMessages, OllamaMessage{
+				Role:    "user",
+				Content: pair.Request,
+			})
+			if pair.Response != "" {
+				ollamaMessages = append(ollamaMessages, OllamaMessage{
+					Role:    "assistant",
+					Content: pair.Response,
+				})
+			}
+		}
+
 		reqBody := ChatRequest{
 			Model:    modelName,
-			Messages: messages,
+			Messages: ollamaMessages,
 			Stream:   true,
 		}
 

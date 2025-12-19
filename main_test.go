@@ -131,3 +131,28 @@ func TestTopAndBottomRespondToWidth(t *testing.T) {
 	// A properly centered line should have spaces before RAMA
 	assert.True(t, strings.Index(ramaLine, "RAMA") > 0, "RAMA should be indented with padding")
 }
+
+// Scenario 5: Display message count and message indicator
+func TestDisplayMessageCountAndIndicator(t *testing.T) {
+	// Given a running rama in read mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// And the user has sent three request messages and received three responses
+	m.messagePairs = []MessagePair{
+		{Request: "First question", Response: "First answer"},
+		{Request: "Second question", Response: "Second answer"},
+		{Request: "Third question", Response: "Third answer"},
+	}
+
+	// When the focus is on the second message pair (index 1)
+	m.currentPairIndex = 1
+
+	// Get the view
+	view := m.View()
+
+	// Then the status bar should display "MSG 2/3"
+	assert.Contains(t, view, "MSG 2/3", "Status bar should display MSG 2/3")
+}

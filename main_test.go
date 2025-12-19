@@ -156,3 +156,40 @@ func TestDisplayMessageCountAndIndicator(t *testing.T) {
 	// Then the status bar should display "MSG 2/3"
 	assert.Contains(t, view, "MSG 2/3", "Status bar should display MSG 2/3")
 }
+
+// Scenario 6: Request message surrounded in border
+func TestRequestMessageSurroundedInBorder(t *testing.T) {
+	// Given a running rama in read mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// Switch to read mode
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	updatedModel, _ = m.Update(escMsg)
+	m = updatedModel.(model)
+
+	// When the user has sent a request message
+	m.messagePairs = []MessagePair{
+		{Request: "Test question", Response: "Test answer", Duration: 2500 * time.Millisecond},
+	}
+	m.currentPairIndex = 0
+	m.updateViewport()
+
+	// Get the viewport content
+	viewportContent := m.viewport.View()
+
+	// Then the request message should be displayed with a top border
+	assert.Contains(t, viewportContent, "Request", "Top border should contain 'Request'")
+
+	// And the word "Response" should be shown in the bottom border
+	assert.Contains(t, viewportContent, "Response", "Bottom border should contain 'Response'")
+
+	// And the duration should be shown in the bottom border
+	assert.Contains(t, viewportContent, "2.5s", "Bottom border should show duration")
+
+	// And no "You:"/"Assistant:" labels should be shown
+	assert.NotContains(t, viewportContent, "You:", "Should not contain 'You:' label")
+	assert.NotContains(t, viewportContent, "Assistant:", "Should not contain 'Assistant:' label")
+}

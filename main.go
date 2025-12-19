@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -50,6 +51,7 @@ type StreamResponse struct {
 type MessagePair struct {
 	Request  string
 	Response string
+	Duration time.Duration // Time taken to generate the response
 }
 
 type ModelsResponse struct {
@@ -98,6 +100,7 @@ type model struct {
 	renderer         *glamour.TermRenderer
 	loadingStart     time.Time
 	waitingStart     time.Time
+	requestStart     time.Time // Time when current request was sent
 	isWaiting        bool
 	chatRequested    bool
 	loadingModel     bool
@@ -204,6 +207,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadingModel = true
 			m.modelIsLoaded = false
 			m.loadingStart = time.Now()
+			m.requestStart = time.Now() // Track when request was sent
 			m.isWaiting = false
 			m.chatRequested = true
 			m.responseLines = []string{}
@@ -276,9 +280,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		response := string(msg)
 		response = strings.TrimSpace(response)
 
-		// Update the current message pair with the response
+		// Calculate response duration and update the current message pair
 		if len(m.messagePairs) > 0 {
+			duration := time.Since(m.requestStart)
 			m.messagePairs[m.currentPairIndex].Response = response
+			m.messagePairs[m.currentPairIndex].Duration = duration
 		}
 
 		// Clear streaming buffer and response lines
@@ -354,8 +360,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) calculateViewportHeight() int {
-	// Layout: RAMA line (1) + blank (1) + viewport + blank (1) + input borders (2) + textarea (dynamic) + status (1)
-	fixedHeight := 7
+	// Layout: RAMA line (1) + viewport + blank (1) + input borders (2) + textarea (dynamic) + status (1)
+	fixedHeight := 5
 	textareaHeight := m.textarea.Height()
 	return max(m.height-fixedHeight-textareaHeight, 5)
 }
@@ -365,22 +371,33 @@ func (m *model) updateViewport() {
 
 	// Render all message pairs in the conversation
 	for _, pair := range m.messagePairs {
-		// Request message
-		content.WriteString(lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("12")).
-			Render("You:"))
-		content.WriteString(" ")
+		// Request message with border (straight line)
+		requestBorderText := "──── Request "
+		fmt.Fprintln(os.Stderr, "Viewport width:", m.viewport.Width)
+		remainingWidth := max(m.viewport.Width-utf8.RuneCountInString(requestBorderText), 0)
+		requestBorder := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Render(requestBorderText + strings.Repeat("─", remainingWidth))
+
+		content.WriteString(requestBorder)
+		content.WriteString("\n")
 		content.WriteString(pair.Request)
 		content.WriteString("\n\n")
 
 		// Response message (if present)
 		if pair.Response != "" {
-			content.WriteString(lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("13")).
-				Render("Assistant:"))
+			// Response border with duration (straight line)
+			durationStr := fmt.Sprintf("%.1fs", pair.Duration.Seconds())
+			responseBorderText := fmt.Sprintf("──── Response (%s) ", durationStr)
+			remainingWidth := max(m.viewport.Width-utf8.RuneCountInString(responseBorderText), 0)
+			responseBorder := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("240")).
+				Render(responseBorderText + strings.Repeat("─", remainingWidth))
+
+			content.WriteString(responseBorder)
 			content.WriteString("\n")
+
+			// Render response as markdown
 			rendered, err := m.renderer.Render(pair.Response)
 			if err != nil {
 				content.WriteString(pair.Response)
@@ -435,7 +452,7 @@ func (m model) View() string {
 
 	topLine := ramaText + " " + horizontalLine
 	b.WriteString(contentStyle.Render(topLine))
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
 	// Viewport with left padding
 	viewportContent := m.viewport.View()

@@ -9,6 +9,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const LoremIpsum = `
+ 	Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque euismod, nisi
+  eu consectetur consectetur, nisl nunc varius nisi, nec lacinia lorem risus quis
+  elit. Ut et risus eget odio interdum porta. Aenean non felis nec tortor pulvinar
+  facilisis. Morbi tempor, nulla vel condimentum aliquet, sapien libero interdum
+  mauris, in egestas metus orci at ligula.
+
+  Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia
+  curae; Donec fermentum massa ut elit pulvinar, non tempor dui tempor. Integer et
+  dui a justo interdum pulvinar. Quisque id nulla ac sem sodales condimentum. Etiam
+  euismod, dolor sit amet facilisis placerat, turpis nulla condimentum sem, nec
+  interdum libero justo nec purus.
+
+  Proin id justo non lorem finibus commodo. Praesent sit amet lectus a justo volutpat
+  tempor. Suspendisse potenti. Sed auctor, nulla at tempus tincidunt, lorem felis
+  porta ex, non volutpat leo ex vel elit. Fusce sit amet justo ac sapien pulvinar
+  ullamcorper.
+`
+
 // Scenario 1: Start in prompt mode
 func TestStartInPromptMode(t *testing.T) {
 	// Given a CLI prompt
@@ -227,4 +246,70 @@ func TestDisplayOneMessagePairAtATime(t *testing.T) {
 	assert.Contains(t, viewportContent, "Rust", "Second response should contain 'Rust'")
 	assert.NotContains(t, viewportContent, "What is Go?", "First message should not be visible")
 	assert.NotContains(t, viewportContent, "programming language", "First response should not be visible")
+}
+
+// Scenario 8: Scroll to top of current message pair
+func TestScrollToTopOfCurrentMessagePair(t *testing.T) {
+	// Given a running rama in read mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// Switch to read mode
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	updatedModel, _ = m.Update(escMsg)
+	m = updatedModel.(model)
+
+	// And the user has sent one request and received one response
+	m.messagePairs = []MessagePair{
+		{Request: "Test question", Response: "Test answer with a long response that might cause scrolling"},
+	}
+	m.currentPairIndex = 0
+	m.updateViewport()
+
+	// Scroll down in the viewport
+	m.viewport.LineDown(5)
+
+	// When the user presses "K"
+	kMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}}
+	updatedModel, _ = m.Update(kMsg)
+	m = updatedModel.(model)
+
+	// Then the viewport should be scrolled to the top
+	assert.Equal(t, 0, m.viewport.YOffset, "Viewport should be scrolled to top (YOffset should be 0)")
+}
+
+// Scenario 9: Scroll to bottom of most recent message pair
+func TestScrollToBottomOfMostRecentMessagePair(t *testing.T) {
+	// Given a running rama in read mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// Switch to read mode
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	updatedModel, _ = m.Update(escMsg)
+	m = updatedModel.(model)
+
+	// And the user has sent one request and received one response
+	m.messagePairs = []MessagePair{
+		{Request: "Test question", Response: LoremIpsum + LoremIpsum}, // Long response to enable scrolling
+	}
+	m.currentPairIndex = 0
+	m.updateViewport()
+
+	// Start at the top
+	m.viewport.GotoTop()
+	initialOffset := m.viewport.YOffset
+
+	// When the user presses "J"
+	jMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}}
+	updatedModel, _ = m.Update(jMsg)
+	m = updatedModel.(model)
+
+	// Then the viewport should be scrolled to the bottom
+	assert.True(t, m.viewport.AtBottom(), "Viewport should be at bottom")
+	assert.NotEqual(t, initialOffset, m.viewport.YOffset, "YOffset should have changed from initial position")
 }

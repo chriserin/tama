@@ -173,6 +173,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.textarea.Focus()
 				return m, nil
 			}
+			// Handle 'K' key to scroll to top of current message pair
+			if len(msg.Runes) == 1 && msg.Runes[0] == 'K' && m.mode == ReadMode {
+				m.viewport.GotoTop()
+				return m, nil
+			}
+			// Handle 'J' key to scroll to bottom of current message pair
+			if len(msg.Runes) == 1 && msg.Runes[0] == 'J' && m.mode == ReadMode {
+				m.viewport.GotoBottom()
+				return m, nil
+			}
 		case tea.KeyEnter:
 			if !m.textarea.Focused() {
 				m.textarea.Focus()

@@ -197,6 +197,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport = viewport.New(effectiveWidth, m.height-10)
 			m.textarea.SetWidth(effectiveWidth - 4)
 			m.ready = true
+			r, _ := glamour.NewTermRenderer(
+				glamour.WithStandardStyle("tokyo-night"),
+				glamour.WithWordWrap(effectiveWidth),
+			)
+			m.renderer = r
 		} else {
 			m.viewport.Width = effectiveWidth
 			m.viewport.Height = m.height - 10
@@ -205,7 +210,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if atBottom {
 				m.viewport.GotoBottom()
 			}
+			r, _ := glamour.NewTermRenderer(
+				glamour.WithStandardStyle("tokyo-night"),
+				glamour.WithWordWrap(effectiveWidth),
+			)
+			m.renderer = r
 		}
+		m.updateViewport()
 
 	case tickMsg:
 		var tickCmds []tea.Cmd

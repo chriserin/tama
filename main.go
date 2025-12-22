@@ -447,7 +447,7 @@ func (m *model) updateViewport() {
 	}
 
 	m.viewport.SetContent(content.String())
-	m.viewport.GotoBottom()
+	m.viewport.GotoTop()
 }
 
 func (m model) View() string {

@@ -391,3 +391,29 @@ func TestMoveToPreviousMessagePair(t *testing.T) {
 	viewportContent := m.viewport.View()
 	assert.Contains(t, viewportContent, "First question", "Should show first message pair")
 }
+
+// DAY 3 Feature Tests
+
+// Scenario 12: Loaded response begins scrolled to top
+func TestLoadedResponseBeginsScrolledToTop(t *testing.T) {
+	// Given a running tama
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// And the user has sent a request
+	m.messagePairs = []MessagePair{
+		{Request: "Test question", Response: ""},
+	}
+	m.currentPairIndex = 0
+
+	// When a response is received and updateViewport is called
+	m.messagePairs[0].Response = LoremIpsum + LoremIpsum // Long response
+	m.messagePairs[0].Duration = 1 * time.Second
+	m.updateViewport()
+
+	// Then the viewport should be scrolled to the top
+	assert.Equal(t, 0, m.viewport.YOffset, "Viewport should begin scrolled to top (YOffset should be 0)")
+	assert.True(t, m.viewport.AtTop(), "Viewport should be at the top")
+}

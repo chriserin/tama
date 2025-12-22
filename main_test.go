@@ -248,9 +248,9 @@ func TestDisplayOneMessagePairAtATime(t *testing.T) {
 	assert.NotContains(t, viewportContent, "programming language", "First response should not be visible")
 }
 
-// Scenario 8: Scroll to top of current message pair
-func TestScrollToTopOfCurrentMessagePair(t *testing.T) {
-	// Given a running tama in read mode
+// Scenario 8: K should not scroll within current message, only navigate to previous
+func TestKShouldNotScrollWithinMessage(t *testing.T) {
+	// Given a running tama in read mode with only one message pair
 	m := initialModel()
 	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
 	updatedModel, _ := m.Update(windowMsg)
@@ -263,26 +263,29 @@ func TestScrollToTopOfCurrentMessagePair(t *testing.T) {
 
 	// And the user has sent one request and received one response
 	m.messagePairs = []MessagePair{
-		{Request: "Test question", Response: "Test answer with a long response that might cause scrolling"},
+		{Request: "Test question", Response: LoremIpsum + LoremIpsum}, // Long response
 	}
 	m.currentPairIndex = 0
 	m.updateViewport()
 
 	// Scroll down in the viewport
-	m.viewport.ScrollDown(5)
+	m.viewport.LineDown(5)
+	initialOffset := m.viewport.YOffset
+	assert.True(t, initialOffset > 0, "Should have scrolled down")
 
-	// When the user presses "K"
+	// When the user presses "K" (with no previous message to navigate to)
 	kMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}}
 	updatedModel, _ = m.Update(kMsg)
 	m = updatedModel.(model)
 
-	// Then the viewport should be scrolled to the top
-	assert.Equal(t, 0, m.viewport.YOffset, "Viewport should be scrolled to top (YOffset should be 0)")
+	// Then K should do nothing (no scroll, no navigation)
+	assert.Equal(t, initialOffset, m.viewport.YOffset, "K should not scroll within current message when there's no previous message")
+	assert.Equal(t, 0, m.currentPairIndex, "Should still be on first message pair")
 }
 
-// Scenario 9: Scroll to bottom of most recent message pair
-func TestScrollToBottomOfMostRecentMessagePair(t *testing.T) {
-	// Given a running tama in read mode
+// Scenario 9: J should not scroll within current message, only navigate to next
+func TestJShouldNotScrollWithinMessage(t *testing.T) {
+	// Given a running tama in read mode with only one message pair
 	m := initialModel()
 	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
 	updatedModel, _ := m.Update(windowMsg)
@@ -295,7 +298,7 @@ func TestScrollToBottomOfMostRecentMessagePair(t *testing.T) {
 
 	// And the user has sent one request and received one response
 	m.messagePairs = []MessagePair{
-		{Request: "Test question", Response: LoremIpsum + LoremIpsum}, // Long response to enable scrolling
+		{Request: "Test question", Response: LoremIpsum + LoremIpsum}, // Long response
 	}
 	m.currentPairIndex = 0
 	m.updateViewport()
@@ -303,18 +306,19 @@ func TestScrollToBottomOfMostRecentMessagePair(t *testing.T) {
 	// Start at the top
 	m.viewport.GotoTop()
 	initialOffset := m.viewport.YOffset
+	assert.Equal(t, 0, initialOffset, "Should start at top")
 
-	// When the user presses "J"
+	// When the user presses "J" (with no next message to navigate to)
 	jMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}}
 	updatedModel, _ = m.Update(jMsg)
 	m = updatedModel.(model)
 
-	// Then the viewport should be scrolled to the bottom
-	assert.True(t, m.viewport.AtBottom(), "Viewport should be at bottom")
-	assert.NotEqual(t, initialOffset, m.viewport.YOffset, "YOffset should have changed from initial position")
+	// Then J should do nothing (no scroll, no navigation)
+	assert.Equal(t, initialOffset, m.viewport.YOffset, "J should not scroll within current message when there's no next message")
+	assert.Equal(t, 0, m.currentPairIndex, "Should still be on first message pair")
 }
 
-// Scenario 10: Move to next message pair
+// Scenario 10: Move to next message pair and scroll to top
 func TestMoveToNextMessagePair(t *testing.T) {
 	// Given a running tama in read mode
 	m := initialModel()
@@ -329,16 +333,19 @@ func TestMoveToNextMessagePair(t *testing.T) {
 
 	// And the user has sent two request messages and received two responses
 	m.messagePairs = []MessagePair{
-		{Request: "First question", Response: "First answer"},
-		{Request: "Second question", Response: "Second answer"},
+		{Request: "First question", Response: LoremIpsum + LoremIpsum + LoremIpsum},
+		{Request: "Second question", Response: LoremIpsum + LoremIpsum + LoremIpsum},
 	}
 
 	// And the focus is on the first message pair
 	m.currentPairIndex = 0
 	m.updateViewport()
 
-	// And already at the bottom
-	m.viewport.GotoBottom()
+	// Scroll down to verify it resets to top when navigating
+	for i := 0; i < 10; i++ {
+		m.viewport.LineDown(1)
+	}
+	assert.True(t, m.viewport.YOffset > 0, "Should be scrolled down")
 
 	// When the user presses "J"
 	jMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}}
@@ -348,12 +355,15 @@ func TestMoveToNextMessagePair(t *testing.T) {
 	// Then the focus should move to the second message pair
 	assert.Equal(t, 1, m.currentPairIndex, "Should move to second message pair")
 
+	// And the viewport should be scrolled to top (YOffset = 0)
+	assert.Equal(t, 0, m.viewport.YOffset, "Viewport should be at top after navigating to next message")
+
 	// And the viewport should show the second pair
 	viewportContent := m.viewport.View()
 	assert.Contains(t, viewportContent, "Second question", "Should show second message pair")
 }
 
-// Scenario 11: Move to previous message pair
+// Scenario 11: Move to previous message pair and scroll to top
 func TestMoveToPreviousMessagePair(t *testing.T) {
 	// Given a running tama in read mode
 	m := initialModel()
@@ -368,16 +378,19 @@ func TestMoveToPreviousMessagePair(t *testing.T) {
 
 	// And the user has sent two request messages and received two responses
 	m.messagePairs = []MessagePair{
-		{Request: "First question", Response: "First answer"},
-		{Request: "Second question", Response: "Second answer"},
+		{Request: "First question", Response: LoremIpsum + LoremIpsum + LoremIpsum},
+		{Request: "Second question", Response: LoremIpsum + LoremIpsum + LoremIpsum},
 	}
 
 	// And the focus is on the second message pair
 	m.currentPairIndex = 1
 	m.updateViewport()
 
-	// And already at the top
-	m.viewport.GotoTop()
+	// Scroll down to verify it resets to top when navigating
+	for i := 0; i < 10; i++ {
+		m.viewport.LineDown(1)
+	}
+	assert.True(t, m.viewport.YOffset > 0, "Should be scrolled down")
 
 	// When the user presses "K"
 	kMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}}
@@ -386,6 +399,9 @@ func TestMoveToPreviousMessagePair(t *testing.T) {
 
 	// Then the focus should move to the first message pair
 	assert.Equal(t, 0, m.currentPairIndex, "Should move to first message pair")
+
+	// And the viewport should be scrolled to top (YOffset = 0)
+	assert.Equal(t, 0, m.viewport.YOffset, "Viewport should be at top after navigating to previous message")
 
 	// And the viewport should show the first pair
 	viewportContent := m.viewport.View()

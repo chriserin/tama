@@ -196,30 +196,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(msg.Runes) == 1 && m.mode == ReadMode {
 				m.lastKeyWasG = false
 			}
-			// Handle 'K' key to scroll to top or move to previous message pair
+			// Handle 'K' key to move to previous message pair
 			if len(msg.Runes) == 1 && msg.Runes[0] == 'K' && m.mode == ReadMode {
-				if m.viewport.AtTop() && m.currentPairIndex > 0 {
-					// At top, move to previous message pair
+				if m.currentPairIndex > 0 {
+					// Move to previous message pair
 					m.currentPairIndex--
 					m.updateViewport()
 					m.viewport.GotoTop()
-				} else {
-					// Not at top, scroll to top
-					m.viewport.GotoTop()
 				}
+				// Do nothing if already at first message
 				return m, nil
 			}
-			// Handle 'J' key to scroll to bottom or move to next message pair
+			// Handle 'J' key to move to next message pair
 			if len(msg.Runes) == 1 && msg.Runes[0] == 'J' && m.mode == ReadMode {
-				if m.viewport.AtBottom() && m.currentPairIndex < len(m.messagePairs)-1 {
-					// At bottom, move to next message pair
+				if m.currentPairIndex < len(m.messagePairs)-1 {
+					// Move to next message pair
 					m.currentPairIndex++
 					m.updateViewport()
 					m.viewport.GotoTop()
-				} else {
-					// Not at bottom, scroll to bottom
-					m.viewport.GotoBottom()
 				}
+				// Do nothing if already at last message
 				return m, nil
 			}
 		case tea.KeyEnter:

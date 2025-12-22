@@ -3,5 +3,5 @@ Ensure: Go to Read Mode once a response is made
 Ensure: Hide prompt box once in Read Mode
 Ensure: Show prompt box when exiting Read Mode
 Ensure: gg and G should go to top and bottom of response
-Ensure: Response chunks are streamed paragraph by paragraph to stream
 Ensure: J and K should not navigate top and bottom of message, only prev/next
+Ensure: Response chunks are streamed paragraph by paragraph to stream

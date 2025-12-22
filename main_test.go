@@ -452,7 +452,7 @@ func TestGoToReadModeOnceResponseIsMade(t *testing.T) {
 	m.requestStart = time.Now()
 
 	// When a response is received
-	responseMsg := responseLineMsg("This is the response")
+	responseMsg := responseCompleteMsg("This is the response")
 	updatedModel, _ = m.Update(responseMsg)
 	m = updatedModel.(model)
 
@@ -619,4 +619,66 @@ func TestDetectParagraphBoundary(t *testing.T) {
 			assert.Equal(t, tt.expected, result, tt.name)
 		})
 	}
+}
+
+// Scenario 19: Test partial response streaming with responseLineMsg
+func TestPartialResponseStreaming(t *testing.T) {
+	// Given a running tama with a request sent
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// Create a message pair with a request
+	m.messagePairs = []MessagePair{
+		{Request: "Tell me a story", Response: ""},
+	}
+	m.currentPairIndex = 0
+	m.requestStart = time.Now()
+
+	// When the first partial response arrives
+	partialMsg1 := responseLineMsg("Once upon a time")
+	updatedModel, _ = m.Update(partialMsg1)
+	m = updatedModel.(model)
+
+	// Then the response should be visible in responseLines
+	assert.Equal(t, 1, len(m.responseLines), "Should have one response line")
+	assert.Equal(t, "Once upon a time", m.responseLines[0], "Should contain the partial response")
+
+	// And the message pair should NOT be updated yet (response still empty)
+	assert.Equal(t, "", m.messagePairs[0].Response, "Message pair response should still be empty during streaming")
+
+	// And we should still be in PromptMode (not switched to ReadMode)
+	assert.Equal(t, PromptMode, m.mode, "Should still be in PromptMode during streaming")
+
+	// When a second partial response arrives
+	partialMsg2 := responseLineMsg("Once upon a time, there was a brave knight")
+	updatedModel, _ = m.Update(partialMsg2)
+	m = updatedModel.(model)
+
+	// Then the response should be updated with the new content
+	assert.Equal(t, 1, len(m.responseLines), "Should still have one response line")
+	assert.Equal(t, "Once upon a time, there was a brave knight", m.responseLines[0], "Should contain the updated partial response")
+
+	// And we should still be in PromptMode
+	assert.Equal(t, PromptMode, m.mode, "Should still be in PromptMode during streaming")
+
+	// When the complete response arrives
+	completeMsg := responseCompleteMsg("Once upon a time, there was a brave knight who saved the kingdom.")
+	updatedModel, _ = m.Update(completeMsg)
+	m = updatedModel.(model)
+
+	// Then the message pair should be updated with the complete response
+	// (Note: TrimSpace removes trailing newline)
+	assert.Equal(t, "Once upon a time, there was a brave knight who saved the kingdom.", m.messagePairs[0].Response, "Message pair should have the complete response")
+
+	// And the duration should be set
+	assert.True(t, m.messagePairs[0].Duration > 0, "Duration should be set")
+
+	// And we should switch to ReadMode
+	assert.Equal(t, ReadMode, m.mode, "Should switch to ReadMode when response is complete")
+	assert.False(t, m.textarea.Focused(), "Textarea should not be focused in ReadMode")
+
+	// Note: responseLines may still contain the last partial update
+	// This is acceptable as the complete response is now in the message pair
 }

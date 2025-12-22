@@ -78,10 +78,12 @@ const (
 // Bubbletea messages
 type tickMsg time.Time
 type responseLineMsg string
+type responseCompleteMsg string
 type errorMsg struct{ err error }
 type modelLoadedMsg struct{ model string }
 type modelSelectedMsg struct{ model string }
 type modelStatusMsg struct{ loaded bool }
+type setSendFuncMsg struct{ send func(tea.Msg) }
 
 // Model holds the application state
 type model struct {
@@ -105,7 +107,8 @@ type model struct {
 	loadingModel     bool
 	responseLines    []string
 	streamBuffer     string
-	lastKeyWasG      bool // Track if last key pressed was 'g' for 'gg' sequence
+	lastKeyWasG      bool          // Track if last key pressed was 'g' for 'gg' sequence
+	send             func(tea.Msg) // Function to send messages to the program
 }
 
 func initialModel() model {
@@ -270,7 +273,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			return m, tea.Batch(
 				checkModelStatus(m.currentModel),
-				sendChatRequestCmd(m.messagePairs, m.currentModel),
+				sendChatRequestCmd(m.messagePairs, m.currentModel, m.send),
 				tickCmd(),
 			)
 		}
@@ -322,6 +325,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case responseLineMsg:
+		m.responseLines = []string{}
+		m.responseLines = append(m.responseLines, string(msg))
+		m.updateViewport()
+
+	case responseCompleteMsg:
 		// Response received, stop waiting timer
 		m.isWaiting = false
 		m.chatRequested = false
@@ -335,10 +343,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messagePairs[m.currentPairIndex].Response = response
 			m.messagePairs[m.currentPairIndex].Duration = duration
 		}
-
-		// Clear streaming buffer and response lines
-		m.streamBuffer = ""
-		m.responseLines = []string{}
 
 		// Switch to ReadMode and blur textarea
 		m.mode = ReadMode
@@ -368,6 +372,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// If not loaded yet, keep polling (tickMsg will continue)
+
+	case setSendFuncMsg:
+		m.send = msg.send
 
 	case errorMsg:
 		m.err = msg.err
@@ -451,21 +458,35 @@ func (m *model) updateViewport() {
 				content.WriteString(rendered)
 			}
 			content.WriteString("\n")
+		} else {
+			// Response border without duration (straight line)
+			responseBorderText := "──── Response "
+			remainingWidth := max(m.viewport.Width-utf8.RuneCountInString(responseBorderText), 0)
+			responseBorder := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("240")).
+				Render(responseBorderText + strings.Repeat("─", remainingWidth))
+			content.WriteString(responseBorder)
+			content.WriteString("\n")
+
+			partialResponse := strings.Builder{}
+			if len(m.responseLines) > 0 {
+				partialResponse.WriteString("\n")
+				partialResponse.WriteString(strings.Join(m.responseLines, ""))
+				rendered, err := m.renderer.Render(partialResponse.String())
+				if err != nil {
+					content.WriteString(partialResponse.String())
+				} else {
+					content.WriteString(rendered)
+				}
+			} else {
+				content.WriteString("Waiting... \n")
+			}
 		}
 	}
 
 	// If currently streaming, show partial response
-	if len(m.responseLines) > 0 {
-		content.WriteString(lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("13")).
-			Render("Assistant:"))
-		content.WriteString("\n")
-		content.WriteString(strings.Join(m.responseLines, ""))
-	}
 
 	m.viewport.SetContent(content.String())
-	m.viewport.GotoTop()
 }
 
 func (m model) View() string {
@@ -577,7 +598,7 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func sendChatRequestCmd(messagePairs []MessagePair, modelName string) tea.Cmd {
+func sendChatRequestCmd(messagePairs []MessagePair, modelName string, sendFn func(tea.Msg)) tea.Cmd {
 	return func() tea.Msg {
 		// Convert message pairs to Ollama messages
 		var ollamaMessages []OllamaMessage
@@ -629,11 +650,13 @@ func sendChatRequestCmd(messagePairs []MessagePair, modelName string) tea.Cmd {
 			if streamResp.Message.Content != "" {
 				fullResponse.WriteString(streamResp.Message.Content)
 			}
+			// Send partial updates for streaming effect
+			sendFn(responseLineMsg(fullResponse.String()))
 		}
 
 		// Send the complete response
 		content := fullResponse.String()
-		return responseLineMsg(content + "\n")
+		return responseCompleteMsg(content + "\n")
 	}
 }
 
@@ -728,6 +751,11 @@ func main() {
 		tea.WithMouseCellMotion(),
 		tea.WithReportFocus(),
 	)
+
+	// Set the send function on the model for later use
+	go func() {
+		p.Send(setSendFuncMsg{send: p.Send})
+	}()
 
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

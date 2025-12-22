@@ -417,3 +417,96 @@ func TestLoadedResponseBeginsScrolledToTop(t *testing.T) {
 	assert.Equal(t, 0, m.viewport.YOffset, "Viewport should begin scrolled to top (YOffset should be 0)")
 	assert.True(t, m.viewport.AtTop(), "Viewport should be at the top")
 }
+
+// Scenario 13: Go to Read Mode once a response is made
+func TestGoToReadModeOnceResponseIsMade(t *testing.T) {
+	// Given a running tama in prompt mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	assert.Equal(t, PromptMode, m.mode, "Should start in prompt mode")
+
+	// And the user has sent a request
+	m.messagePairs = []MessagePair{
+		{Request: "Test question", Response: ""},
+	}
+	m.currentPairIndex = 0
+	m.requestStart = time.Now()
+
+	// When a response is received
+	responseMsg := responseLineMsg("This is the response")
+	updatedModel, _ = m.Update(responseMsg)
+	m = updatedModel.(model)
+
+	// Then the mode should switch to ReadMode
+	assert.Equal(t, ReadMode, m.mode, "Should switch to ReadMode when response is received")
+	assert.False(t, m.textarea.Focused(), "Textarea should not be focused in ReadMode")
+}
+
+// Scenario 14: Hide prompt box once in Read Mode
+func TestHidePromptBoxInReadMode(t *testing.T) {
+	// Given a running tama in read mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// Switch to read mode
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	updatedModel, _ = m.Update(escMsg)
+	m = updatedModel.(model)
+
+	assert.Equal(t, ReadMode, m.mode, "Should be in read mode")
+
+	// When rendering the view
+	view := m.View()
+
+	// Then the prompt box should not be visible
+	// The textarea view should not be in the output
+	// We can check for the border and placeholder text
+	assert.NotContains(t, view, "Type your message...", "Placeholder text should not be visible in ReadMode")
+
+	// Switch back to prompt mode to compare
+	m.mode = PromptMode
+	m.textarea.Focus()
+	promptModeView := m.View()
+
+	// The views should be different (prompt mode shows more)
+	assert.NotEqual(t, view, promptModeView, "View in ReadMode should be different from PromptMode")
+	assert.True(t, len(promptModeView) > len(view), "PromptMode view should be longer (includes textarea)")
+}
+
+// Scenario 15: Show prompt box when exiting Read Mode
+func TestShowPromptBoxWhenExitingReadMode(t *testing.T) {
+	// Given a running tama in read mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// Switch to read mode
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	updatedModel, _ = m.Update(escMsg)
+	m = updatedModel.(model)
+
+	assert.Equal(t, ReadMode, m.mode, "Should be in read mode")
+
+	// Verify textarea is not visible in ReadMode
+	readModeView := m.View()
+	assert.NotContains(t, readModeView, "Type your message...", "Placeholder should not be visible in ReadMode")
+
+	// When the user presses "i" to exit read mode
+	iMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}
+	updatedModel, _ = m.Update(iMsg)
+	m = updatedModel.(model)
+
+	// Then the mode should switch to PromptMode
+	assert.Equal(t, PromptMode, m.mode, "Should switch to PromptMode")
+	assert.True(t, m.textarea.Focused(), "Textarea should be focused")
+
+	// And the prompt box should be visible
+	promptModeView := m.View()
+	assert.Contains(t, promptModeView, "Type your message...", "Placeholder should be visible in PromptMode")
+}

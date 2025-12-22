@@ -78,7 +78,6 @@ const (
 // Bubbletea messages
 type tickMsg time.Time
 type responseLineMsg string
-type responseCompleteMsg struct{}
 type errorMsg struct{ err error }
 type modelLoadedMsg struct{ model string }
 type modelSelectedMsg struct{ model string }
@@ -242,12 +241,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Update viewport to show user message immediately
 			m.updateViewport()
 
+			m.mode = ReadMode
+			m.textarea.Blur()
+			m.viewport.Height = m.calculateViewportHeight()
+
 			// Save the model being used
 			saveLastUsedModel(m.currentModel)
 
 			return m, tea.Batch(
-				sendChatRequestCmd(m.messagePairs, m.currentModel),
 				checkModelStatus(m.currentModel),
+				sendChatRequestCmd(m.messagePairs, m.currentModel),
 				tickCmd(),
 			)
 		}
@@ -317,21 +320,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streamBuffer = ""
 		m.responseLines = []string{}
 
-		// Update viewport to show full conversation
-		m.updateViewport()
+		// Switch to ReadMode and blur textarea
+		m.mode = ReadMode
+		m.textarea.Blur()
 
-	case responseCompleteMsg:
-		m.isWaiting = false
-		// Render any remaining content in the buffer
-		if m.streamBuffer != "" {
-			rendered, err := m.renderer.Render(m.streamBuffer)
-			if err != nil {
-				m.responseLines = append(m.responseLines, m.streamBuffer)
-			} else {
-				m.responseLines = append(m.responseLines, rendered)
-			}
-			m.streamBuffer = ""
-		}
+		// Update viewport to show full conversation
 		m.updateViewport()
 
 	case modelSelectedMsg:
@@ -388,9 +381,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) calculateViewportHeight() int {
 	// Layout: TAMA line (1) + viewport + blank (1) + input borders (2) + textarea (dynamic) + status (1)
-	fixedHeight := 5
+	fixedHeight := 3
 	textareaHeight := m.textarea.Height()
-	return max(m.height-fixedHeight-textareaHeight, 5)
+	inputBorders := 2
+	if m.mode == ReadMode {
+		textareaHeight = 0
+		inputBorders = 0
+	}
+	return max(m.height-fixedHeight-textareaHeight-inputBorders, 5)
 }
 
 func (m *model) updateViewport() {
@@ -487,16 +485,18 @@ func (m model) View() string {
 	b.WriteString(contentStyle.Render(viewportContent))
 	b.WriteString("\n\n")
 
-	// Input area with left padding and minimum width
-	textareaView := m.textarea.View()
-	textareaStyled := lipgloss.NewStyle().
-		Width(effectiveWidth).
-		Border(lipgloss.NormalBorder(), true, false, true, false).
-		BorderForeground(lipgloss.Color("240")).
-		Padding(0, 1).
-		Render(textareaView)
-	b.WriteString(contentStyle.Render(textareaStyled))
-	b.WriteString("\n")
+	// Input area with left padding and minimum width (only in PromptMode)
+	if m.mode == PromptMode {
+		textareaView := m.textarea.View()
+		textareaStyled := lipgloss.NewStyle().
+			Width(effectiveWidth).
+			Border(lipgloss.NormalBorder(), true, false, true, false).
+			BorderForeground(lipgloss.Color("240")).
+			Padding(0, 1).
+			Render(textareaView)
+		b.WriteString(contentStyle.Render(textareaStyled))
+		b.WriteString("\n")
+	}
 
 	// Bottom: Status line with Model, MSG count, and Timer (centered)
 	modelStatus := fmt.Sprintf("Model: %s", m.currentModel)

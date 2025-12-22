@@ -105,6 +105,7 @@ type model struct {
 	loadingModel     bool
 	responseLines    []string
 	streamBuffer     string
+	lastKeyWasG      bool // Track if last key pressed was 'g' for 'gg' sequence
 }
 
 func initialModel() model {
@@ -170,7 +171,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(msg.Runes) == 1 && msg.Runes[0] == 'i' && m.mode == ReadMode {
 				m.mode = PromptMode
 				m.textarea.Focus()
+				m.lastKeyWasG = false
 				return m, nil
+			}
+			// Handle 'G' key to go to bottom of response
+			if len(msg.Runes) == 1 && msg.Runes[0] == 'G' && m.mode == ReadMode {
+				m.viewport.GotoBottom()
+				m.lastKeyWasG = false
+				return m, nil
+			}
+			// Handle 'g' key for 'gg' sequence to go to top
+			if len(msg.Runes) == 1 && msg.Runes[0] == 'g' && m.mode == ReadMode {
+				if m.lastKeyWasG {
+					// Second 'g' pressed, go to top
+					m.viewport.GotoTop()
+					m.lastKeyWasG = false
+				} else {
+					// First 'g' pressed, wait for second
+					m.lastKeyWasG = true
+				}
+				return m, nil
+			}
+			// Reset lastKeyWasG for any other key
+			if len(msg.Runes) == 1 && m.mode == ReadMode {
+				m.lastKeyWasG = false
 			}
 			// Handle 'K' key to scroll to top or move to previous message pair
 			if len(msg.Runes) == 1 && msg.Runes[0] == 'K' && m.mode == ReadMode {
@@ -543,6 +567,11 @@ func (m model) View() string {
 	}
 
 	return b.String()
+}
+
+// Helper functions
+func hasParagraphBoundary(text string) bool {
+	return strings.Contains(text, "\n\n")
 }
 
 // Commands

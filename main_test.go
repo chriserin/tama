@@ -510,3 +510,97 @@ func TestShowPromptBoxWhenExitingReadMode(t *testing.T) {
 	promptModeView := m.View()
 	assert.Contains(t, promptModeView, "Type your message...", "Placeholder should be visible in PromptMode")
 }
+
+// Scenario 16: Press G to go to bottom of response
+func TestPressShiftGToGoToBottomOfResponse(t *testing.T) {
+	// Given a running tama in read mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// Switch to read mode
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	updatedModel, _ = m.Update(escMsg)
+	m = updatedModel.(model)
+
+	// And the user has sent a request with a long response
+	m.messagePairs = []MessagePair{
+		{Request: "Test question", Response: LoremIpsum + LoremIpsum},
+	}
+	m.currentPairIndex = 0
+	m.updateViewport()
+
+	// Start at the top
+	m.viewport.GotoTop()
+	assert.True(t, m.viewport.AtTop(), "Should start at top")
+
+	// When the user presses "G" (shift+g)
+	gMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}}
+	updatedModel, _ = m.Update(gMsg)
+	m = updatedModel.(model)
+
+	// Then the viewport should be at the bottom
+	assert.True(t, m.viewport.AtBottom(), "Viewport should be at bottom after pressing G")
+}
+
+// Scenario 17: Press gg to go to top of response
+func TestPressGGToGoToTopOfResponse(t *testing.T) {
+	// Given a running tama in read mode
+	m := initialModel()
+	windowMsg := tea.WindowSizeMsg{Width: 100, Height: 30}
+	updatedModel, _ := m.Update(windowMsg)
+	m = updatedModel.(model)
+
+	// Switch to read mode
+	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	updatedModel, _ = m.Update(escMsg)
+	m = updatedModel.(model)
+
+	// And the user has sent a request with a long response
+	m.messagePairs = []MessagePair{
+		{Request: "Test question", Response: LoremIpsum + LoremIpsum},
+	}
+	m.currentPairIndex = 0
+	m.updateViewport()
+
+	// Start at the bottom
+	m.viewport.GotoBottom()
+	assert.True(t, m.viewport.AtBottom(), "Should start at bottom")
+
+	// When the user presses "g" twice (gg)
+	gMsg1 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}}
+	updatedModel, _ = m.Update(gMsg1)
+	m = updatedModel.(model)
+
+	gMsg2 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}}
+	updatedModel, _ = m.Update(gMsg2)
+	m = updatedModel.(model)
+
+	// Then the viewport should be at the top
+	assert.True(t, m.viewport.AtTop(), "Viewport should be at top after pressing gg")
+}
+
+// Scenario 18: Test paragraph detection utility
+func TestDetectParagraphBoundary(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		expected bool
+	}{
+		{"Empty string", "", false},
+		{"Single newline", "\n", false},
+		{"Double newline", "\n\n", true},
+		{"Text with double newline at end", "Some text\n\n", true},
+		{"Text with single newline", "Some text\n", false},
+		{"Multiple lines no double newline", "Line 1\nLine 2\nLine 3", false},
+		{"Multiple lines with double newline", "Paragraph 1\n\nParagraph 2", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := hasParagraphBoundary(tt.text)
+			assert.Equal(t, tt.expected, result, tt.name)
+		})
+	}
+}

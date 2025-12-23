@@ -43,8 +43,13 @@ func (m *Model) updateViewport() {
 		// Response message (if present)
 		if pair.Response != "" {
 			// Response border with duration (straight line)
-			durationStr := fmt.Sprintf("%.1fs", pair.Duration.Seconds())
-			responseBorderText := fmt.Sprintf("──── Response (%s) ", durationStr)
+			var responseBorderText string
+			if pair.Cancelled {
+				responseBorderText = "──── Response (cancelled) "
+			} else {
+				durationStr := fmt.Sprintf("%.1fs", pair.Duration.Seconds())
+				responseBorderText = fmt.Sprintf("──── Response (%s) ", durationStr)
+			}
 			remainingWidth := max(m.Viewport.Width-utf8.RuneCountInString(responseBorderText), 0)
 			responseBorder := lipgloss.NewStyle().
 				Foreground(lipgloss.Color("240")).
@@ -63,7 +68,12 @@ func (m *Model) updateViewport() {
 			content.WriteString("\n")
 		} else {
 			// Response border without duration (straight line)
-			responseBorderText := "──── Response "
+			var responseBorderText string
+			if pair.Cancelled {
+				responseBorderText = "──── Response (cancelled) "
+			} else {
+				responseBorderText = "──── Response "
+			}
 			remainingWidth := max(m.Viewport.Width-utf8.RuneCountInString(responseBorderText), 0)
 			responseBorder := lipgloss.NewStyle().
 				Foreground(lipgloss.Color("240")).
@@ -72,7 +82,9 @@ func (m *Model) updateViewport() {
 			content.WriteString("\n")
 
 			partialResponse := strings.Builder{}
-			if len(m.ResponseLines) > 0 {
+			if pair.Cancelled {
+				content.WriteString("Request cancelled\n")
+			} else if len(m.ResponseLines) > 0 {
 				partialResponse.WriteString("\n")
 				partialResponse.WriteString(strings.Join(m.ResponseLines, ""))
 				rendered, err := m.Renderer.Render(partialResponse.String())

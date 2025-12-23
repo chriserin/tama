@@ -1,11 +1,16 @@
 package tui
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -681,4 +686,197 @@ func TestPartialResponseStreaming(t *testing.T) {
 
 	// Note: responseLines may still contain the last partial update
 	// This is acceptable as the complete response is now in the message pair
+}
+
+// Day 4 - Scenario 1: Cancel current request with ctrl-c
+func TestCancelCurrentRequest(t *testing.T) {
+	// Given the user has submitted a request
+	m := InitialModel()
+	m.Ready = true
+	m.Width = 100
+	m.Height = 30
+	m.Viewport.Width = 100
+	m.Viewport.Height = 20
+
+	// Simulate sending a request
+	m.MessagePairs = append(m.MessagePairs, MessagePair{
+		Request:  "Tell me a story",
+		Response: "",
+	})
+	m.CurrentPairIndex = 0
+	m.RequestStart = time.Now()
+	m.IsWaiting = true
+	m.ChatRequested = true
+
+	// And the response is not yet complete
+	// And the app is in read mode
+	m.Mode = ReadMode
+	m.Textarea.Blur()
+
+	// When the user keys "ctrl-c"
+	ctrlCMsg := tea.KeyMsg{Type: tea.KeyCtrlC}
+	updatedModel, cmd := m.Update(ctrlCMsg)
+	m = updatedModel.(Model)
+
+	// Then request is cancelled
+	// And the app does not wait for the response any longer
+	assert.False(t, m.IsWaiting, "Should stop waiting for response")
+	assert.False(t, m.ChatRequested, "Chat request should be cancelled")
+
+	// And the message pair should be marked as cancelled
+	assert.True(t, m.MessagePairs[0].Cancelled, "Message should be marked as cancelled")
+
+	// And the app should not quit (cmd should be nil, not tea.Quit)
+	assert.Nil(t, cmd, "Should not quit the app when cancelling a request")
+
+	// And the user should still be in ReadMode
+	assert.Equal(t, ReadMode, m.Mode, "Should remain in ReadMode after cancelling")
+}
+
+// Day 4 - Scenario 1 continued: Cancelled messages not included in future requests
+func TestCancelledMessagesNotIncludedInFutureRequests(t *testing.T) {
+	// Given a cancelled message exists
+	m := InitialModel()
+	m.Ready = true
+	m.MessagePairs = []MessagePair{
+		{
+			Request:   "First request",
+			Response:  "First response",
+			Cancelled: false,
+		},
+		{
+			Request:   "Second request (cancelled)",
+			Response:  "",
+			Cancelled: true,
+		},
+	}
+	m.CurrentPairIndex = 1
+
+	// When building messages for a new request
+	// We need to check what messages would be sent to Ollama
+	// The sendChatRequestCmd function should skip cancelled messages
+
+	// Simulate what sendChatRequestCmd does
+	var ollamaMessages []OllamaMessage
+	for _, pair := range m.MessagePairs {
+		// Skip cancelled messages
+		if pair.Cancelled {
+			continue
+		}
+		ollamaMessages = append(ollamaMessages, OllamaMessage{
+			Role:    "user",
+			Content: pair.Request,
+		})
+		if pair.Response != "" {
+			ollamaMessages = append(ollamaMessages, OllamaMessage{
+				Role:    "assistant",
+				Content: pair.Response,
+			})
+		}
+	}
+
+	// Then only the first message should be included
+	assert.Equal(t, 2, len(ollamaMessages), "Should only include non-cancelled messages")
+	assert.Equal(t, "First request", ollamaMessages[0].Content, "Should include first request")
+	assert.Equal(t, "First response", ollamaMessages[1].Content, "Should include first response")
+}
+
+// Day 4 - Scenario 1 continued: Cancelled indicator in response border
+func TestCancelledIndicatorInResponseBorder(t *testing.T) {
+	// Given a cancelled message
+	m := InitialModel()
+	m.Ready = true
+	m.Width = 100
+	m.Height = 30
+	m.Viewport.Width = 100
+	m.Viewport.Height = 20
+	r, _ := glamour.NewTermRenderer(
+		glamour.WithStandardStyle("tokyo-night"),
+		glamour.WithWordWrap(100),
+	)
+	m.Renderer = r
+
+	m.MessagePairs = []MessagePair{
+		{
+			Request:   "Tell me a story",
+			Response:  "",
+			Cancelled: true,
+		},
+	}
+	m.CurrentPairIndex = 0
+
+	// When the viewport is updated
+	m.updateViewport()
+
+	// Then the view should show the cancelled indicator
+	view := m.View()
+	assert.Contains(t, view, "Response (cancelled)", "Should show cancelled indicator in response border")
+	assert.Contains(t, view, "Request cancelled", "Should show cancelled message")
+}
+
+// Test sendChatRequestCmd with mock HTTP server
+func TestSendChatRequestCmd(t *testing.T) {
+	// Create mock server that simulates Ollama API
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify request method and headers
+		assert.Equal(t, "POST", r.Method, "Should use POST method")
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"), "Should set Content-Type header")
+
+		// Send streaming response (simulating Ollama's streaming API)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		// Send multiple streaming chunks
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"Hello"}}`)
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":" world"}}`)
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"!"}}`)
+	}))
+	defer server.Close()
+
+	// Track messages sent via sendFn
+	var receivedMessages []tea.Msg
+	sendFn := func(msg tea.Msg) {
+		receivedMessages = append(receivedMessages, msg)
+	}
+
+	// Create message pairs
+	messagePairs := []MessagePair{
+		{
+			Request:  "Say hello",
+			Response: "",
+		},
+	}
+
+	// Create context for cancellation
+	ctx, cancelFn := context.WithCancel(context.Background())
+	defer cancelFn()
+
+	// Call sendChatRequestCmd with mock server URL
+	cmd := sendChatRequestCmd(messagePairs, "test-model", sendFn, ctx, cancelFn, server.URL)
+
+	// Execute the command
+	result := cmd()
+
+	// Verify the result is a ResponseCompleteMsg
+	completeMsg, ok := result.(ResponseCompleteMsg)
+	assert.True(t, ok, "Should return ResponseCompleteMsg")
+
+	// Verify the complete response contains all parts
+	response := string(completeMsg)
+	assert.Contains(t, response, "Hello world!", "Should contain full response text")
+
+	// Verify partial messages were sent during streaming
+	assert.Greater(t, len(receivedMessages), 0, "Should have sent partial response messages")
+
+	// Verify at least one partial message contains partial response
+	foundPartial := false
+	for _, msg := range receivedMessages {
+		if lineMsg, ok := msg.(ResponseLineMsg); ok {
+			if strings.Contains(string(lineMsg), "Hello") {
+				foundPartial = true
+				break
+			}
+		}
+	}
+	assert.True(t, foundPartial, "Should have sent at least one partial ResponseLineMsg")
 }

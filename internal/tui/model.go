@@ -42,9 +42,10 @@ type StreamResponse struct {
 
 // Application types
 type MessagePair struct {
-	Request  string
-	Response string
-	Duration time.Duration // Time taken to generate the response
+	Request   string
+	Response  string
+	Duration  time.Duration // Time taken to generate the response
+	Cancelled bool          // Whether the request was cancelled
 }
 
 type ModelsResponse struct {
@@ -80,28 +81,30 @@ type SetSendFuncMsg struct{ Send func(tea.Msg) }
 
 // Model holds the application state
 type Model struct {
-	Mode             Mode
-	Textarea         textarea.Model
-	Viewport         viewport.Model
-	MessagePairs     []MessagePair
-	CurrentPairIndex int // 0-based index of currently focused message pair
-	CurrentModel     string
-	ModelIsLoaded    bool
-	Err              error
-	Width            int
-	Height           int
-	Ready            bool
-	Renderer         *glamour.TermRenderer
-	LoadingStart     time.Time
-	WaitingStart     time.Time
-	RequestStart     time.Time // Time when current request was sent
-	IsWaiting        bool
-	ChatRequested    bool
-	LoadingModel     bool
-	ResponseLines    []string
-	StreamBuffer     string
-	LastKeyWasG      bool          // Track if last key pressed was 'g' for 'gg' sequence
-	Send             func(tea.Msg) // Function to send messages to the program
+	Mode                   Mode
+	Textarea               textarea.Model
+	Viewport               viewport.Model
+	MessagePairs           []MessagePair
+	CurrentPairIndex       int // 0-based index of currently focused message pair
+	CurrentModel           string
+	ModelIsLoaded          bool
+	Err                    error
+	Width                  int
+	Height                 int
+	Ready                  bool
+	Renderer               *glamour.TermRenderer
+	LoadingStart           time.Time
+	WaitingStart           time.Time
+	RequestStart           time.Time // Time when current request was sent
+	IsWaiting              bool
+	ChatRequested          bool
+	LoadingModel           bool
+	ResponseLines          []string
+	StreamBuffer           string
+	LastKeyWasG            bool          // Track if last key pressed was 'g' for 'gg' sequence
+	Send                   func(tea.Msg) // Function to send messages to the program
+	cancelCurrentRequestFn func()        // Function to cancel the current request
+	ChatURL                string        // Ollama chat API URL (configurable for testing)
 }
 
 func InitialModel() Model {
@@ -131,6 +134,7 @@ func InitialModel() Model {
 		CurrentPairIndex: 0,
 		CurrentModel:     loadLastUsedModel(),
 		Renderer:         r,
+		ChatURL:          ollamaChatURL,
 	}
 }
 

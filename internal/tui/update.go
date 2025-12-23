@@ -3,6 +3,7 @@ package tui
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,6 +34,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC:
+			// If waiting for a response, cancel it instead of quitting
+			if m.IsWaiting || m.ChatRequested {
+				m.IsWaiting = false
+				m.ChatRequested = false
+				if m.cancelCurrentRequestFn != nil {
+					m.cancelCurrentRequestFn()
+					m.cancelCurrentRequestFn = nil
+				}
+				// Mark the current message as cancelled
+				if len(m.MessagePairs) > 0 && m.CurrentPairIndex < len(m.MessagePairs) {
+					m.MessagePairs[m.CurrentPairIndex].Cancelled = true
+				}
+				return m, nil
+			}
+			// Otherwise, quit the app
 			return m, tea.Quit
 		case tea.KeyEsc:
 			// Exit prompt mode, enter read mode
@@ -140,13 +156,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Mode = ReadMode
 			m.Textarea.Blur()
 			m.Viewport.Height = m.calculateViewportHeight()
+			ctx, cancelFn := context.WithCancel(context.Background())
+			m.cancelCurrentRequestFn = cancelFn
 
 			// Save the model being used
 			saveLastUsedModel(m.CurrentModel)
 
 			return m, tea.Batch(
 				checkModelStatus(m.CurrentModel),
-				sendChatRequestCmd(m.MessagePairs, m.CurrentModel, m.Send),
+				sendChatRequestCmd(m.MessagePairs, m.CurrentModel, m.Send, ctx, cancelFn, m.ChatURL),
 				tickCmd(),
 			)
 		}
@@ -287,11 +305,15 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func sendChatRequestCmd(messagePairs []MessagePair, modelName string, sendFn func(tea.Msg)) tea.Cmd {
+func sendChatRequestCmd(messagePairs []MessagePair, modelName string, sendFn func(tea.Msg), ctx context.Context, cancelFn func(), chatURL string) tea.Cmd {
 	return func() tea.Msg {
 		// Convert message pairs to Ollama messages
 		var ollamaMessages []OllamaMessage
 		for _, pair := range messagePairs {
+			// Skip cancelled messages - they should not be included in context
+			if pair.Cancelled {
+				continue
+			}
 			ollamaMessages = append(ollamaMessages, OllamaMessage{
 				Role:    "user",
 				Content: pair.Request,
@@ -315,7 +337,12 @@ func sendChatRequestCmd(messagePairs []MessagePair, modelName string, sendFn fun
 			return errorMsg{err: fmt.Errorf("failed to marshal request: %w", err)}
 		}
 
-		resp, err := http.Post(ollamaChatURL, "application/json", bytes.NewBuffer(jsonData))
+		req, err := http.NewRequestWithContext(ctx, "POST", chatURL, bytes.NewBuffer(jsonData))
+		req.Header.Set("Content-Type", "application/json")
+		client := &http.Client{}
+
+		resp, err := client.Do(req)
+
 		if err != nil {
 			return errorMsg{err: fmt.Errorf("failed to send request: %w", err)}
 		}
@@ -329,23 +356,34 @@ func sendChatRequestCmd(messagePairs []MessagePair, modelName string, sendFn fun
 		// Stream the response
 		scanner := bufio.NewScanner(resp.Body)
 		var fullResponse strings.Builder
+		outChan := make(chan []byte)
 
-		for scanner.Scan() {
-			var streamResp StreamResponse
-			if err := json.Unmarshal(scanner.Bytes(), &streamResp); err != nil {
-				continue
+		go func() {
+			for scanner.Scan() {
+				outChan <- scanner.Bytes()
 			}
+			cancelFn()
+		}()
 
-			if streamResp.Message.Content != "" {
-				fullResponse.WriteString(streamResp.Message.Content)
+		for {
+			select {
+			case <-ctx.Done():
+				return ResponseCompleteMsg(fullResponse.String())
+			case responseBytes := <-outChan:
+				var streamResp StreamResponse
+				copiedResponseBytes := make([]byte, len(responseBytes))
+				copy(copiedResponseBytes, responseBytes)
+				if err := json.Unmarshal(copiedResponseBytes, &streamResp); err != nil {
+					return ResponseCompleteMsg(fullResponse.String())
+				}
+
+				if streamResp.Message.Content != "" {
+					fullResponse.WriteString(streamResp.Message.Content)
+				}
+				// Send partial updates for streaming effect
+				sendFn(ResponseLineMsg(fullResponse.String()))
 			}
-			// Send partial updates for streaming effect
-			sendFn(ResponseLineMsg(fullResponse.String()))
 		}
-
-		// Send the complete response
-		content := fullResponse.String()
-		return ResponseCompleteMsg(content + "\n")
 	}
 }
 

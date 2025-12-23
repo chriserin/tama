@@ -14,7 +14,10 @@ func (m *Model) calculateViewportHeight() int {
 	fixedHeight := 3
 	textareaHeight := m.Textarea.Height()
 	inputBorders := 2
-	if m.Mode == ReadMode {
+	if m.IsWaiting || m.ChatRequested {
+		textareaHeight = 1
+		inputBorders = 2
+	} else if m.Mode == ReadMode {
 		textareaHeight = 0
 		inputBorders = 0
 	}
@@ -140,7 +143,19 @@ func (m Model) View() string {
 	b.WriteString("\n\n")
 
 	// Input area with left padding and minimum width (only in PromptMode)
-	if m.Mode == PromptMode {
+	// Or show waiting message if waiting for response
+	if m.IsWaiting || m.ChatRequested {
+		// Show waiting message when response is in progress
+		waitingMsg := "Waiting for response, ctrl-c to cancel"
+		waitingStyled := lipgloss.NewStyle().
+			Width(effectiveWidth).
+			Border(lipgloss.NormalBorder(), true, false, true, false).
+			BorderForeground(lipgloss.Color("240")).
+			Padding(0, 1).
+			Render(waitingMsg)
+		b.WriteString(contentStyle.Render(waitingStyled))
+		b.WriteString("\n")
+	} else if m.Mode == PromptMode {
 		textareaView := m.Textarea.View()
 		textareaStyled := lipgloss.NewStyle().
 			Width(effectiveWidth).

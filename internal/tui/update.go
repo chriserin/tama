@@ -61,6 +61,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyRunes:
 			// Handle 'i' key to enter prompt mode from read mode
 			if len(msg.Runes) == 1 && msg.Runes[0] == 'i' && m.Mode == ReadMode {
+				// Don't allow entering prompt mode while waiting for a response
+				if m.IsWaiting || m.ChatRequested {
+					return m, nil
+				}
 				m.Mode = PromptMode
 				m.Textarea.Focus()
 				m.LastKeyWasG = false
@@ -241,6 +245,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Textarea.Blur()
 
 		// Update viewport to show full conversation
+		m.Viewport.Height = m.calculateViewportHeight()
 		m.updateViewport()
 
 	case modelSelectedMsg:

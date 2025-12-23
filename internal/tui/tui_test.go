@@ -880,3 +880,99 @@ func TestSendChatRequestCmd(t *testing.T) {
 	}
 	assert.True(t, foundPartial, "Should have sent at least one partial ResponseLineMsg")
 }
+
+// Day 4 - Scenario 2: Cannot submit new request until first request is complete
+func TestCannotEnterPromptModeWhileWaitingForResponse(t *testing.T) {
+	// Given the user has submitted a request
+	m := InitialModel()
+	m.Ready = true
+	m.Width = 100
+	m.Height = 30
+	m.Viewport.Width = 100
+	m.Viewport.Height = 20
+
+	// Simulate a request in progress
+	m.MessagePairs = append(m.MessagePairs, MessagePair{
+		Request:  "Tell me a story",
+		Response: "",
+	})
+	m.CurrentPairIndex = 0
+	m.RequestStart = time.Now()
+	m.IsWaiting = true
+	m.ChatRequested = true
+
+	// And the response is not yet complete
+	// And the app is in read mode
+	m.Mode = ReadMode
+	m.Textarea.Blur()
+
+	// When the user types i to enter prompt mode
+	iMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}
+	updatedModel, _ := m.Update(iMsg)
+	m = updatedModel.(Model)
+
+	// Then the user should still be in ReadMode (not PromptMode)
+	assert.Equal(t, ReadMode, m.Mode, "Should remain in ReadMode when waiting for response")
+
+	// And the textarea should not be focused
+	assert.False(t, m.Textarea.Focused(), "Textarea should not be focused while waiting")
+
+	// And the view should show a waiting message
+	view := m.View()
+	assert.Contains(t, view, "Waiting for response", "Should show waiting message")
+	assert.Contains(t, view, "ctrl-c to cancel", "Should show cancellation instruction")
+}
+
+// Day 4 - Scenario 2 continued: Textarea appears when response completes
+func TestTextareaAppearsWhenResponseCompletes(t *testing.T) {
+	// Given a request is in progress
+	m := InitialModel()
+	m.Ready = true
+	m.Width = 100
+	m.Height = 30
+	m.Viewport.Width = 100
+	m.Viewport.Height = 20
+	r, _ := glamour.NewTermRenderer(
+		glamour.WithStandardStyle("tokyo-night"),
+		glamour.WithWordWrap(100),
+	)
+	m.Renderer = r
+
+	m.MessagePairs = append(m.MessagePairs, MessagePair{
+		Request:  "Tell me a story",
+		Response: "",
+	})
+	m.CurrentPairIndex = 0
+	m.RequestStart = time.Now()
+	m.IsWaiting = true
+	m.ChatRequested = true
+	m.Mode = ReadMode
+	m.Textarea.Blur()
+
+	// When the response completes
+	completeMsg := ResponseCompleteMsg("Once upon a time, there was a brave knight.")
+	updatedModel, _ := m.Update(completeMsg)
+	m = updatedModel.(Model)
+
+	// Then the waiting state should be cleared
+	assert.False(t, m.IsWaiting, "Should no longer be waiting")
+	assert.False(t, m.ChatRequested, "Chat request should be complete")
+
+	// And the user should be in ReadMode
+	assert.Equal(t, ReadMode, m.Mode, "Should be in ReadMode after response")
+
+	// And when the user presses i
+	iMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}
+	updatedModel, _ = m.Update(iMsg)
+	m = updatedModel.(Model)
+
+	// Then they should be able to enter PromptMode
+	assert.Equal(t, PromptMode, m.Mode, "Should be able to enter PromptMode after response completes")
+
+	// And the textarea should be focused
+	assert.True(t, m.Textarea.Focused(), "Textarea should be focused in PromptMode")
+
+	// And the waiting message should not appear
+	view := m.View()
+	assert.NotContains(t, view, "Waiting for response", "Should not show waiting message after completion")
+}

@@ -55,8 +55,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.Mode == PromptMode {
 				m.Mode = ReadMode
 				m.Textarea.Blur()
-				return m, nil
 			}
+			m.Viewport.Height = m.calculateViewportHeight()
 			return m, nil
 		case tea.KeyRunes:
 			// Handle 'i' key to enter prompt mode from read mode
@@ -68,6 +68,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Mode = PromptMode
 				m.Textarea.Focus()
 				m.LastKeyWasG = false
+				m.Viewport.Height = m.calculateViewportHeight()
 				return m, nil
 			}
 			// Handle 'G' key to go to bottom of response
@@ -142,7 +143,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Response: "", // Will be filled when response arrives
 			}
 			m.MessagePairs = append(m.MessagePairs, newPair)
-			m.CurrentPairIndex = len(m.MessagePairs) - 1 // Focus on the newly created pair
+			m.CurrentPairIndex = len(m.MessagePairs) - 1    // Focus on the newly created pair
+			m.ResponseTargetIndex = len(m.MessagePairs) - 1 // Response will go to this index
 
 			m.Textarea.Reset()
 			m.LoadingModel = true
@@ -233,11 +235,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		response := string(msg)
 		response = strings.TrimSpace(response)
 
-		// Calculate response duration and update the current message pair
-		if len(m.MessagePairs) > 0 {
+		// Calculate response duration and update the target message pair
+		if len(m.MessagePairs) > 0 && m.ResponseTargetIndex < len(m.MessagePairs) {
 			duration := time.Since(m.RequestStart)
-			m.MessagePairs[m.CurrentPairIndex].Response = response
-			m.MessagePairs[m.CurrentPairIndex].Duration = duration
+			m.MessagePairs[m.ResponseTargetIndex].Response = response
+			m.MessagePairs[m.ResponseTargetIndex].Duration = duration
 		}
 
 		// Switch to ReadMode and blur textarea

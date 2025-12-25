@@ -87,7 +87,8 @@ func (m *Model) updateViewport() {
 			partialResponse := strings.Builder{}
 			if pair.Cancelled {
 				content.WriteString("Request cancelled\n")
-			} else if len(m.ResponseLines) > 0 {
+			} else if len(m.ResponseLines) > 0 && m.CurrentPairIndex == m.ResponseTargetIndex {
+				// Only show partial response if viewing the message that's receiving it
 				partialResponse.WriteString("\n")
 				partialResponse.WriteString(strings.Join(m.ResponseLines, ""))
 				rendered, err := m.Renderer.Render(partialResponse.String())

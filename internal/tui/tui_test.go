@@ -976,3 +976,97 @@ func TestTextareaAppearsWhenResponseCompletes(t *testing.T) {
 	view := m.View()
 	assert.NotContains(t, view, "Waiting for response", "Should not show waiting message after completion")
 }
+
+// Day 4 - Scenario 3: Response is set into the correct message
+func TestResponseGoesToCorrectMessage(t *testing.T) {
+	// Given a request/response has already occurred
+	m := InitialModel()
+	m.Ready = true
+	m.Width = 100
+	m.Height = 30
+	m.Viewport.Width = 100
+	m.Viewport.Height = 20
+	r, _ := glamour.NewTermRenderer(
+		glamour.WithStandardStyle("tokyo-night"),
+		glamour.WithWordWrap(100),
+	)
+	m.Renderer = r
+
+	// First message pair is complete
+	m.MessagePairs = []MessagePair{
+		{
+			Request:  "First request",
+			Response: "First response",
+			Duration: 1 * time.Second,
+		},
+	}
+	m.CurrentPairIndex = 0
+
+	// And the MSG indicator says "MSG 1/1"
+	view := m.View()
+	assert.Contains(t, view, "MSG 1/1", "Should show MSG 1/1")
+
+	// When the user submits a new request (simulate enter key with text)
+	m.Mode = PromptMode
+	m.Textarea.Focus()
+	m.Textarea.SetValue("Second request")
+
+	enterMsg := tea.KeyMsg{Type: tea.KeyEnter}
+	updatedModel, _ := m.Update(enterMsg)
+	m = updatedModel.(Model)
+
+	// Then the MSG indicator says "MSG 2/2"
+	view = m.View()
+	assert.Contains(t, view, "MSG 2/2", "Should show MSG 2/2 after submitting second request")
+	assert.Equal(t, 2, len(m.MessagePairs), "Should have 2 message pairs")
+	assert.Equal(t, 1, m.CurrentPairIndex, "Should be viewing second message (index 1)")
+
+	// When the user navigates to the previous message
+	kMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}}
+	updatedModel, _ = m.Update(kMsg)
+	m = updatedModel.(Model)
+
+	// Then the MSG indicator says "MSG 1/2"
+	view = m.View()
+	assert.Contains(t, view, "MSG 1/2", "Should show MSG 1/2 after navigating back")
+	assert.Equal(t, 0, m.CurrentPairIndex, "Should be viewing first message (index 0)")
+
+	// And the first message data should be unchanged (check data, not view due to glamour rendering)
+	assert.Equal(t, "First response", m.MessagePairs[0].Response, "First message should still have its original response")
+
+	// When the ongoing response receives new data
+	partialMsg := ResponseLineMsg("Second response partial")
+	updatedModel, _ = m.Update(partialMsg)
+	m = updatedModel.(Model)
+
+	// Then the first message pair is still unchanged
+	assert.Equal(t, "First response", m.MessagePairs[0].Response, "First message pair should be unchanged by partial response")
+
+	// And the second message should still be empty (partial not saved yet)
+	assert.Equal(t, "", m.MessagePairs[1].Response, "Second message should still be empty during streaming")
+
+	// When the ongoing second response is complete
+	completeMsg := ResponseCompleteMsg("Second response complete")
+	updatedModel, _ = m.Update(completeMsg)
+	m = updatedModel.(Model)
+
+	// Then the first message is still unchanged
+	assert.Equal(t, "First response", m.MessagePairs[0].Response, "First message should remain unchanged after complete")
+
+	// And the second message now has the complete response
+	assert.Equal(t, "Second response complete", m.MessagePairs[1].Response, "Second message should have complete response")
+
+	// When the user navigates to the latest message
+	jMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}}
+	updatedModel, _ = m.Update(jMsg)
+	m = updatedModel.(Model)
+
+	// Then they are viewing the second message
+	view = m.View()
+	assert.Contains(t, view, "MSG 2/2", "Should show MSG 2/2")
+	assert.Equal(t, 1, m.CurrentPairIndex, "Should be viewing second message (index 1)")
+
+	// And the second message data is correct
+	assert.Equal(t, "Second response complete", m.MessagePairs[1].Response, "Second message should have complete response")
+	assert.Equal(t, "First response", m.MessagePairs[0].Response, "First message should still be unchanged")
+}

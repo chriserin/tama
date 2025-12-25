@@ -105,6 +105,7 @@ type Model struct {
 	Send                   func(tea.Msg) // Function to send messages to the program
 	cancelCurrentRequestFn func()        // Function to cancel the current request
 	ChatURL                string        // Ollama chat API URL (configurable for testing)
+	ResponseTargetIndex    int           // Index of message pair currently receiving response
 }
 
 func InitialModel() Model {

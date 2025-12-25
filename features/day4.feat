@@ -1,0 +1,35 @@
+Scenario: Cancel current request
+  Given the user has submitted a request
+  and the response is not yet complete
+  And the app is in read mode
+  When the user keys "ctrl-c"
+  Then request is cancelled
+  And the app does not wait for the response any longer
+  And there is a cancelled indicator in the response border
+  And the cancelled message is not included in any future request
+
+Scenario: Cannot submit new request until first request is complete
+  Given the user has submitted a request
+  and the response is not yet complete
+  When the user types i to enter prompt mode
+  Then the user sees a "Waiting for response, ctrl-c to cancel" message
+  And the user does not see the input prompt text area
+  and the height of the viewport is maintained with the status line at the bottom of the window
+  When the request completes
+  Then the user does not see a "Waiting for response, ctrl-c to cancel" message
+  And the user does see the input prompt text area
+
+Scenario: Response is set into the correct message
+  Given a request/response has already occurred
+  And the MSG indicator says "MSG 1/1"
+  When the user submits a new request
+  Then the MSG indicator says "MSG 2/2"
+  When the user navigates to the previous message
+  Then the MSG indicator says "MSG 1/2"
+  And they see the first message response
+  When the ongoing response receives new data
+  Then the user sees first message response is unchanged
+  When the ongoing second response is complete
+  Then the user sees first message response is unchanged
+  When the user navigates to the latest message
+  Then the user sees the second message response

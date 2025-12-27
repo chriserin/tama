@@ -10,7 +10,7 @@ if [ -z "$VERSION" ]; then
 fi
 
 # Check if gh CLI is installed
-if ! command -v gh &> /dev/null; then
+if ! command -v gh &>/dev/null; then
     echo "Error: GitHub CLI (gh) is not installed"
     echo "Install from: https://cli.github.com/"
     exit 1
@@ -30,6 +30,7 @@ if ! git ls-remote --tags origin | grep -q "refs/tags/${VERSION}"; then
     read -p "Push tag ${VERSION} to GitHub? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
+        git push origin main
         git push origin ${VERSION}
     else
         echo "Warning: Tag not pushed to GitHub. Release may fail."

@@ -20,18 +20,35 @@ for BINARY in ${DIST_DIR}/${PROJECT}-${VERSION}-*; do
 
     FILENAME=$(basename "$BINARY")
 
-    # Extract platform from filename
+    # Create temporary packaging directory
+    TEMP_DIR=$(mktemp -d)
+    mkdir -p "${TEMP_DIR}/bin"
+    echo "Temporary Working Directory: ${TEMP_DIR}"
+
+    # Copy binary to bin/ directory with name 'tama' (or 'tama.exe' for Windows)
+    if [[ $FILENAME =~ windows ]]; then
+        cp "$BINARY" "${TEMP_DIR}/bin/tama.exe"
+        ARCHIVE_NAME="${FILENAME%.exe}"
+    else
+        cp "$BINARY" "${TEMP_DIR}/bin/tama"
+        ARCHIVE_NAME="${FILENAME}"
+    fi
+
+    # Extract platform from filename and create archive with absolute path
     if [[ $FILENAME =~ windows ]]; then
         # Create zip for Windows
-        ARCHIVE="${ARCHIVES_DIR}/${FILENAME%.exe}.zip"
+        ARCHIVE="$(pwd)/${ARCHIVES_DIR}/${ARCHIVE_NAME}.zip"
         echo "Creating ${ARCHIVE}..."
-        (cd ${DIST_DIR} && zip -q "../${ARCHIVE}" "${FILENAME}")
+        (cd ${TEMP_DIR} && zip -q -r "${ARCHIVE}" ./)
     else
         # Create tar.gz for Unix
-        ARCHIVE="${ARCHIVES_DIR}/${FILENAME}.tar.gz"
+        ARCHIVE="$(pwd)/${ARCHIVES_DIR}/${ARCHIVE_NAME}.tar.gz"
         echo "Creating ${ARCHIVE}..."
-        tar -czf "${ARCHIVE}" -C ${DIST_DIR} "${FILENAME}"
+        tar -czf "${ARCHIVE}" -C ${TEMP_DIR} ./
     fi
+
+    # Clean up temp directory
+    rm -rf "${TEMP_DIR}"
 
     echo "  ✓ $(basename ${ARCHIVE})"
 done

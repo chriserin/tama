@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var TamaVersion = "dev"
+var TamaVersion = "0.1.0"
 
 var rootCmd = &cobra.Command{
 	Use:   "tama",

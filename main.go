@@ -4,11 +4,28 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"tama/internal/tui"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/cobra"
 )
 
-func main() {
+var TamaVersion = "dev"
+
+var rootCmd = &cobra.Command{
+	Use:   "tama",
+	Short: "An interactive Ollama REPL",
+	Long:  `Tama is an interactive REPL for chatting with Ollama models.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		runTUI()
+	},
+}
+
+func init() {
+	rootCmd.Version = TamaVersion
+}
+
+func runTUI() {
 	p := tea.NewProgram(
 		tui.InitialModel(),
 		tea.WithAltScreen(),
@@ -22,6 +39,13 @@ func main() {
 	}()
 
 	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

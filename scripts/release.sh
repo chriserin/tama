@@ -20,13 +20,19 @@ echo "Creating GitHub release ${VERSION}..."
 
 # Check if tag exists
 if ! git rev-parse ${VERSION} >/dev/null 2>&1; then
-    echo "Tag ${VERSION} does not exist. Creating..."
-    git tag -a ${VERSION} -m "Release ${VERSION}"
+    echo "Error: Tag ${VERSION} does not exist."
+    echo "Run ./scripts/version.sh ${VERSION} first to update version and create tag."
+    exit 1
+fi
 
-    read -p "Push tag to GitHub? (y/n) " -n 1 -r
+# Check if tag has been pushed to remote
+if ! git ls-remote --tags origin | grep -q "refs/tags/${VERSION}"; then
+    read -p "Push tag ${VERSION} to GitHub? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         git push origin ${VERSION}
+    else
+        echo "Warning: Tag not pushed to GitHub. Release may fail."
     fi
 fi
 

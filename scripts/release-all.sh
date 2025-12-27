@@ -13,29 +13,37 @@ echo "  Full Release Process for ${VERSION}"
 echo "======================================"
 echo ""
 
-# Run tests first
-echo "Step 1/6: Running tests..."
-go test ./...
+# Run tests first - exit if they fail
+echo "Step 1/7: Running tests..."
+if ! go test ./...; then
+    echo "✗ Tests failed - aborting release"
+    exit 1
+fi
 echo "✓ Tests passed"
 echo ""
 
+# Update version in main.go and create tag
+echo "Step 2/7: Updating version and creating tag..."
+./scripts/version.sh ${VERSION}
+echo ""
+
 # Build binaries
-echo "Step 2/6: Building binaries..."
+echo "Step 3/7: Building binaries..."
 ./scripts/build.sh ${VERSION}
 echo ""
 
 # Package archives
-echo "Step 3/6: Creating archives..."
+echo "Step 4/7: Creating archives..."
 ./scripts/package.sh ${VERSION}
 echo ""
 
 # Generate checksums
-echo "Step 4/6: Generating checksums..."
+echo "Step 5/7: Generating checksums..."
 ./scripts/checksums.sh
 echo ""
 
 # Preview release notes
-echo "Step 5/6: Generating release notes..."
+echo "Step 6/7: Generating release notes..."
 echo ""
 echo "======================================"
 ./scripts/release-notes.sh ${VERSION}
@@ -49,7 +57,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 # Create GitHub release
-echo "Step 6/6: Creating GitHub release..."
+echo "Step 7/7: Creating GitHub release..."
 ./scripts/release.sh ${VERSION}
 
 echo ""

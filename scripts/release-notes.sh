@@ -106,7 +106,7 @@ fi
 
 # Features section
 if [ ${#FEATURES[@]} -gt 0 ]; then
-    NOTES+="### ✨ Features\n\n"
+    NOTES+="### Features\n\n"
     for feature in "${FEATURES[@]}"; do
         NOTES+="- ${feature}\n"
     done
@@ -115,7 +115,7 @@ fi
 
 # Fixes section
 if [ ${#FIXES[@]} -gt 0 ]; then
-    NOTES+="### 🐛 Bug Fixes\n\n"
+    NOTES+="### Bug Fixes\n\n"
     for fix in "${FIXES[@]}"; do
         NOTES+="- ${fix}\n"
     done
@@ -124,7 +124,7 @@ fi
 
 # Documentation section
 if [ ${#DOCS[@]} -gt 0 ]; then
-    NOTES+="### 📚 Documentation\n\n"
+    NOTES+="### Documentation\n\n"
     for doc in "${DOCS[@]}"; do
         NOTES+="- ${doc}\n"
     done
@@ -133,7 +133,7 @@ fi
 
 # Other changes section
 if [ ${#OTHER[@]} -gt 0 ]; then
-    NOTES+="### 🔧 Other Changes\n\n"
+    NOTES+="### Other Changes\n\n"
     for other in "${OTHER[@]}"; do
         NOTES+="- ${other}\n"
     done

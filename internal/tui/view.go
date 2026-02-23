@@ -40,7 +40,10 @@ func (m *Model) updateViewport() {
 
 		content.WriteString(requestBorder)
 		content.WriteString("\n")
-		content.WriteString(pair.Request)
+		wrappedRequest := lipgloss.NewStyle().
+			Width(m.Viewport.Width).
+			Render(pair.Request)
+		content.WriteString(wrappedRequest)
 		content.WriteString("\n\n")
 
 		// Response message (if present)

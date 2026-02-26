@@ -6,7 +6,7 @@ import (
 
 	"tama/internal/tui"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -28,9 +28,6 @@ func init() {
 func runTUI() {
 	p := tea.NewProgram(
 		tui.InitialModel(),
-		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
-		tea.WithReportFocus(),
 	)
 
 	// Set the send function on the model for later use

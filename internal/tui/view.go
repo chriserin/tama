@@ -6,7 +6,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 func (m *Model) calculateViewportHeight() int {
@@ -33,7 +34,7 @@ func (m *Model) updateViewport() {
 
 		// Request message with border (straight line)
 		requestBorderText := "──── Request "
-		remainingWidth := max(m.Viewport.Width-utf8.RuneCountInString(requestBorderText), 0)
+		remainingWidth := max(m.Viewport.Width()-utf8.RuneCountInString(requestBorderText), 0)
 		requestBorder := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
 			Render(requestBorderText + strings.Repeat("─", remainingWidth))
@@ -41,7 +42,7 @@ func (m *Model) updateViewport() {
 		content.WriteString(requestBorder)
 		content.WriteString("\n")
 		wrappedRequest := lipgloss.NewStyle().
-			Width(m.Viewport.Width).
+			Width(m.Viewport.Width()).
 			Render(pair.Request)
 		content.WriteString(wrappedRequest)
 		content.WriteString("\n\n")
@@ -56,7 +57,7 @@ func (m *Model) updateViewport() {
 				durationStr := fmt.Sprintf("%.1fs", pair.Duration.Seconds())
 				responseBorderText = fmt.Sprintf("──── Response (%s) ", durationStr)
 			}
-			remainingWidth := max(m.Viewport.Width-utf8.RuneCountInString(responseBorderText), 0)
+			remainingWidth := max(m.Viewport.Width()-utf8.RuneCountInString(responseBorderText), 0)
 			responseBorder := lipgloss.NewStyle().
 				Foreground(lipgloss.Color("240")).
 				Render(responseBorderText + strings.Repeat("─", remainingWidth))
@@ -80,7 +81,7 @@ func (m *Model) updateViewport() {
 			} else {
 				responseBorderText = "──── Response "
 			}
-			remainingWidth := max(m.Viewport.Width-utf8.RuneCountInString(responseBorderText), 0)
+			remainingWidth := max(m.Viewport.Width()-utf8.RuneCountInString(responseBorderText), 0)
 			responseBorder := lipgloss.NewStyle().
 				Foreground(lipgloss.Color("240")).
 				Render(responseBorderText + strings.Repeat("─", remainingWidth))
@@ -109,7 +110,14 @@ func (m *Model) updateViewport() {
 	m.Viewport.SetContent(content.String())
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
+	view := tea.NewView(m.renderView())
+	view.AltScreen = true
+	view.ReportFocus = true
+	view.MouseMode = tea.MouseModeCellMotion
+	return view
+}
+func (m Model) renderView() string {
 	if !m.Ready {
 		return "Initializing..."
 	}

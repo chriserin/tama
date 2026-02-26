@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/glamour"
 )
 
@@ -31,9 +31,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Textarea.Focus()
 	case tea.BlurMsg:
 		m.Textarea.Blur()
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC:
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "ctrl+c":
 			// If waiting for a response, cancel it instead of quitting
 			if m.IsWaiting || m.ChatRequested {
 				m.IsWaiting = false
@@ -50,17 +50,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Otherwise, quit the app
 			return m, tea.Quit
-		case tea.KeyEsc:
+		case "esc":
 			// Exit prompt mode, enter read mode
 			if m.Mode == PromptMode {
 				m.Mode = ReadMode
 				m.Textarea.Blur()
 			}
-			m.Viewport.Height = m.calculateViewportHeight()
+			m.Viewport.SetHeight(m.calculateViewportHeight())
 			return m, nil
-		case tea.KeyRunes:
+		default:
 			// Handle 'i' key to enter prompt mode from read mode
-			if len(msg.Runes) == 1 && msg.Runes[0] == 'i' && m.Mode == ReadMode {
+			if len(msg.Text) == 1 && msg.Text[0] == 'i' && m.Mode == ReadMode {
 				// Don't allow entering prompt mode while waiting for a response
 				if m.IsWaiting || m.ChatRequested {
 					return m, nil
@@ -68,17 +68,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Mode = PromptMode
 				m.Textarea.Focus()
 				m.LastKeyWasG = false
-				m.Viewport.Height = m.calculateViewportHeight()
+				m.Viewport.SetHeight(m.calculateViewportHeight())
 				return m, nil
 			}
 			// Handle 'G' key to go to bottom of response
-			if len(msg.Runes) == 1 && msg.Runes[0] == 'G' && m.Mode == ReadMode {
+			if len(msg.Text) == 1 && msg.Text[0] == 'G' && m.Mode == ReadMode {
 				m.Viewport.GotoBottom()
 				m.LastKeyWasG = false
 				return m, nil
 			}
 			// Handle 'g' key for 'gg' sequence to go to top
-			if len(msg.Runes) == 1 && msg.Runes[0] == 'g' && m.Mode == ReadMode {
+			if len(msg.Text) == 1 && msg.Text[0] == 'g' && m.Mode == ReadMode {
 				if m.LastKeyWasG {
 					// Second 'g' pressed, go to top
 					m.Viewport.GotoTop()
@@ -90,11 +90,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			// Reset lastKeyWasG for any other key
-			if len(msg.Runes) == 1 && m.Mode == ReadMode {
+			if len(msg.Text) == 1 && m.Mode == ReadMode {
 				m.LastKeyWasG = false
 			}
 			// Handle 'K' key to move to previous message pair
-			if len(msg.Runes) == 1 && msg.Runes[0] == 'K' && m.Mode == ReadMode {
+			if len(msg.Text) == 1 && msg.Text[0] == 'K' && m.Mode == ReadMode {
 				if m.CurrentPairIndex > 0 {
 					// Move to previous message pair
 					m.CurrentPairIndex--
@@ -105,7 +105,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			// Handle 'J' key to move to next message pair
-			if len(msg.Runes) == 1 && msg.Runes[0] == 'J' && m.Mode == ReadMode {
+			if len(msg.Text) == 1 && msg.Text[0] == 'J' && m.Mode == ReadMode {
 				if m.CurrentPairIndex < len(m.MessagePairs)-1 {
 					// Move to next message pair
 					m.CurrentPairIndex++
@@ -115,7 +115,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Do nothing if already at last message
 				return m, nil
 			}
-		case tea.KeyEnter:
+		case "enter":
 			if !m.Textarea.Focused() {
 				m.Textarea.Focus()
 				return m, nil
@@ -161,7 +161,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.Mode = ReadMode
 			m.Textarea.Blur()
-			m.Viewport.Height = m.calculateViewportHeight()
+			m.Viewport.SetHeight(m.calculateViewportHeight())
 			ctx, cancelFn := context.WithCancel(context.Background())
 			m.cancelCurrentRequestFn = cancelFn
 
@@ -185,8 +185,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		viewportHeight := m.calculateViewportHeight()
 
 		if !m.Ready {
-			m.Viewport.Width = effectiveWidth
-			m.Viewport.Height = viewportHeight
+			m.Viewport.SetWidth(effectiveWidth)
+			m.Viewport.SetHeight(viewportHeight)
 			m.Textarea.SetWidth(effectiveWidth - 4)
 			m.Ready = true
 			r, _ := glamour.NewTermRenderer(
@@ -195,8 +195,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			)
 			m.Renderer = r
 		} else {
-			m.Viewport.Width = effectiveWidth
-			m.Viewport.Height = viewportHeight
+			m.Viewport.SetWidth(effectiveWidth)
+			m.Viewport.SetWidth(viewportHeight)
 			m.Textarea.SetWidth(effectiveWidth - 4)
 
 			if atBottom {
@@ -247,7 +247,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Textarea.Blur()
 
 		// Update viewport to show full conversation
-		m.Viewport.Height = m.calculateViewportHeight()
+		m.Viewport.SetHeight(m.calculateViewportHeight())
 		m.updateViewport()
 
 	case modelSelectedMsg:
@@ -289,14 +289,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		lines := m.Textarea.LineInfo().Height
 		m.Textarea.SetHeight(lines)
 		//key msg for InputEnd
-		inputStartKeyMsg := tea.KeyMsg{Type: tea.KeyCtrlA}
-		inputEndKeyMsg := tea.KeyMsg{Type: tea.KeyCtrlE}
+		inputStartKeyMsg := tea.KeyPressMsg{Text: "ctrl+a"}
+		inputEndKeyMsg := tea.KeyPressMsg{Text: "ctrl+e"}
 		m.Textarea, _ = m.Textarea.Update(inputStartKeyMsg)
 		m.Textarea, _ = m.Textarea.Update(inputEndKeyMsg)
 		cmds = append(cmds, cmd)
 
 		// Recalculate viewport height when textarea height changes
-		m.Viewport.Height = m.calculateViewportHeight()
+		m.Viewport.SetHeight(m.calculateViewportHeight())
 	case ReadMode:
 		m.Viewport, cmd = m.Viewport.Update(msg)
 		cmds = append(cmds, cmd)

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/glamour"
 	"github.com/stretchr/testify/assert"
 )
@@ -56,7 +56,7 @@ func TestExitPromptModeEnterReadMode(t *testing.T) {
 	assert.Equal(t, PromptMode, m.Mode)
 
 	// When the user presses "Esc"
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ := m.Update(escMsg)
 	m = updatedModel.(Model)
 
@@ -75,13 +75,13 @@ func TestEnterPromptModeExitReadMode(t *testing.T) {
 	// Given a running tama in read mode
 	m := InitialModel()
 	// First switch to read mode
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ := m.Update(escMsg)
 	m = updatedModel.(Model)
 	assert.Equal(t, ReadMode, m.Mode, "Should start in read mode for this test")
 
 	// When the user presses "i"
-	iMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}
+	iMsg := tea.KeyPressMsg{Code: 'i', Text: "i"}
 	updatedModel, _ = m.Update(iMsg)
 	m = updatedModel.(Model)
 
@@ -109,7 +109,7 @@ func TestTopAndBottomOfApplication(t *testing.T) {
 	m = updatedModel.(Model)
 
 	// Get the view
-	view := m.View()
+	view := m.View().Content
 
 	// Then the top should display "TAMA"
 	assert.Contains(t, view, "TAMA", "View should contain TAMA header")
@@ -126,7 +126,7 @@ func TestTopAndBottomOfApplication(t *testing.T) {
 	// When a timer is active, it should be shown
 	m.LoadingModel = true
 	m.LoadingStart = time.Now()
-	view = m.View()
+	view = m.View().Content
 	assert.Contains(t, view, "Loading model", "Status line should show loading timer when active")
 }
 
@@ -138,7 +138,7 @@ func TestTopAndBottomRespondToWidth(t *testing.T) {
 	updatedModel, _ := m.Update(windowMsg)
 	m = updatedModel.(Model)
 
-	view := m.View()
+	view := m.View().Content
 
 	// The top and bottom should be centered with padding (like the content viewport)
 	// effectiveWidth should be min(200, 100) = 100
@@ -175,7 +175,7 @@ func TestDisplayMessageCountAndIndicator(t *testing.T) {
 	m.CurrentPairIndex = 1
 
 	// Get the view
-	view := m.View()
+	view := m.View().Content
 
 	// Then the status bar should display "MSG 2/3"
 	assert.Contains(t, view, "MSG 2/3", "Status bar should display MSG 2/3")
@@ -190,7 +190,7 @@ func TestRequestMessageSurroundedInBorder(t *testing.T) {
 	m = updatedModel.(Model)
 
 	// Switch to read mode
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ = m.Update(escMsg)
 	m = updatedModel.(Model)
 
@@ -262,7 +262,7 @@ func TestKShouldNotScrollWithinMessage(t *testing.T) {
 	m = updatedModel.(Model)
 
 	// Switch to read mode
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ = m.Update(escMsg)
 	m = updatedModel.(Model)
 
@@ -275,16 +275,16 @@ func TestKShouldNotScrollWithinMessage(t *testing.T) {
 
 	// Scroll down in the viewport
 	m.Viewport.ScrollDown(5)
-	initialOffset := m.Viewport.YOffset
+	initialOffset := m.Viewport.YOffset()
 	assert.True(t, initialOffset > 0, "Should have scrolled down")
 
 	// When the user presses "K" (with no previous message to navigate to)
-	kMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}}
+	kMsg := tea.KeyPressMsg{Code: 'K', Text: "K"}
 	updatedModel, _ = m.Update(kMsg)
 	m = updatedModel.(Model)
 
 	// Then K should do nothing (no scroll, no navigation)
-	assert.Equal(t, initialOffset, m.Viewport.YOffset, "K should not scroll within current message when there's no previous message")
+	assert.Equal(t, initialOffset, m.Viewport.YOffset(), "K should not scroll within current message when there's no previous message")
 	assert.Equal(t, 0, m.CurrentPairIndex, "Should still be on first message pair")
 }
 
@@ -297,7 +297,7 @@ func TestJShouldNotScrollWithinMessage(t *testing.T) {
 	m = updatedModel.(Model)
 
 	// Switch to read mode
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ = m.Update(escMsg)
 	m = updatedModel.(Model)
 
@@ -310,16 +310,16 @@ func TestJShouldNotScrollWithinMessage(t *testing.T) {
 
 	// Start at the top
 	m.Viewport.GotoTop()
-	initialOffset := m.Viewport.YOffset
+	initialOffset := m.Viewport.YOffset()
 	assert.Equal(t, 0, initialOffset, "Should start at top")
 
 	// When the user presses "J" (with no next message to navigate to)
-	jMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}}
+	jMsg := tea.KeyPressMsg{Code: 'J', Text: "J"}
 	updatedModel, _ = m.Update(jMsg)
 	m = updatedModel.(Model)
 
 	// Then J should do nothing (no scroll, no navigation)
-	assert.Equal(t, initialOffset, m.Viewport.YOffset, "J should not scroll within current message when there's no next message")
+	assert.Equal(t, initialOffset, m.Viewport.YOffset(), "J should not scroll within current message when there's no next message")
 	assert.Equal(t, 0, m.CurrentPairIndex, "Should still be on first message pair")
 }
 
@@ -332,7 +332,7 @@ func TestMoveToNextMessagePair(t *testing.T) {
 	m = updatedModel.(Model)
 
 	// Switch to read mode
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ = m.Update(escMsg)
 	m = updatedModel.(Model)
 
@@ -348,12 +348,12 @@ func TestMoveToNextMessagePair(t *testing.T) {
 
 	// Scroll down to verify it resets to top when navigating
 	for i := 0; i < 10; i++ {
-		m.Viewport.LineDown(1)
+		m.Viewport.ScrollDown(1)
 	}
-	assert.True(t, m.Viewport.YOffset > 0, "Should be scrolled down")
+	assert.True(t, m.Viewport.YOffset() > 0, "Should be scrolled down")
 
 	// When the user presses "J"
-	jMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}}
+	jMsg := tea.KeyPressMsg{Code: 'J', Text: "J"}
 	updatedModel, _ = m.Update(jMsg)
 	m = updatedModel.(Model)
 
@@ -361,7 +361,7 @@ func TestMoveToNextMessagePair(t *testing.T) {
 	assert.Equal(t, 1, m.CurrentPairIndex, "Should move to second message pair")
 
 	// And the viewport should be scrolled to top (YOffset = 0)
-	assert.Equal(t, 0, m.Viewport.YOffset, "Viewport should be at top after navigating to next message")
+	assert.Equal(t, 0, m.Viewport.YOffset(), "Viewport should be at top after navigating to next message")
 
 	// And the viewport should show the second pair
 	viewportContent := m.Viewport.View()
@@ -377,7 +377,7 @@ func TestMoveToPreviousMessagePair(t *testing.T) {
 	m = updatedModel.(Model)
 
 	// Switch to read mode
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ = m.Update(escMsg)
 	m = updatedModel.(Model)
 
@@ -393,12 +393,12 @@ func TestMoveToPreviousMessagePair(t *testing.T) {
 
 	// Scroll down to verify it resets to top when navigating
 	for i := 0; i < 10; i++ {
-		m.Viewport.LineDown(1)
+		m.Viewport.ScrollDown(1)
 	}
-	assert.True(t, m.Viewport.YOffset > 0, "Should be scrolled down")
+	assert.True(t, m.Viewport.YOffset() > 0, "Should be scrolled down")
 
 	// When the user presses "K"
-	kMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}}
+	kMsg := tea.KeyPressMsg{Code: 'K', Text: "K"}
 	updatedModel, _ = m.Update(kMsg)
 	m = updatedModel.(Model)
 
@@ -406,7 +406,7 @@ func TestMoveToPreviousMessagePair(t *testing.T) {
 	assert.Equal(t, 0, m.CurrentPairIndex, "Should move to first message pair")
 
 	// And the viewport should be scrolled to top (YOffset = 0)
-	assert.Equal(t, 0, m.Viewport.YOffset, "Viewport should be at top after navigating to previous message")
+	assert.Equal(t, 0, m.Viewport.YOffset(), "Viewport should be at top after navigating to previous message")
 
 	// And the viewport should show the first pair
 	viewportContent := m.Viewport.View()
@@ -435,7 +435,7 @@ func TestLoadedResponseBeginsScrolledToTop(t *testing.T) {
 	m.updateViewport()
 
 	// Then the viewport should be scrolled to the top
-	assert.Equal(t, 0, m.Viewport.YOffset, "Viewport should begin scrolled to top (YOffset should be 0)")
+	assert.Equal(t, 0, m.Viewport.YOffset(), "Viewport should begin scrolled to top (YOffset should be 0)")
 	assert.True(t, m.Viewport.AtTop(), "Viewport should be at the top")
 }
 
@@ -475,14 +475,14 @@ func TestHidePromptBoxInReadMode(t *testing.T) {
 	m = updatedModel.(Model)
 
 	// Switch to read mode
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ = m.Update(escMsg)
 	m = updatedModel.(Model)
 
 	assert.Equal(t, ReadMode, m.Mode, "Should be in read mode")
 
 	// When rendering the view
-	view := m.View()
+	view := m.View().Content
 
 	// Then the prompt box should not be visible
 	// The textarea view should not be in the output
@@ -492,7 +492,7 @@ func TestHidePromptBoxInReadMode(t *testing.T) {
 	// Switch back to prompt mode to compare
 	m.Mode = PromptMode
 	m.Textarea.Focus()
-	promptModeView := m.View()
+	promptModeView := m.View().Content
 
 	// The views should be different (prompt mode shows more)
 	assert.NotEqual(t, view, promptModeView, "View in ReadMode should be different from PromptMode")
@@ -508,18 +508,18 @@ func TestShowPromptBoxWhenExitingReadMode(t *testing.T) {
 	m = updatedModel.(Model)
 
 	// Switch to read mode
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ = m.Update(escMsg)
 	m = updatedModel.(Model)
 
 	assert.Equal(t, ReadMode, m.Mode, "Should be in read mode")
 
 	// Verify textarea is not visible in ReadMode
-	readModeView := m.View()
+	readModeView := m.View().Content
 	assert.NotContains(t, readModeView, "Type your message...", "Placeholder should not be visible in ReadMode")
 
 	// When the user presses "i" to exit read mode
-	iMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}
+	iMsg := tea.KeyPressMsg{Code: 'i', Text: "i"}
 	updatedModel, _ = m.Update(iMsg)
 	m = updatedModel.(Model)
 
@@ -528,8 +528,9 @@ func TestShowPromptBoxWhenExitingReadMode(t *testing.T) {
 	assert.True(t, m.Textarea.Focused(), "Textarea should be focused")
 
 	// And the prompt box should be visible
-	promptModeView := m.View()
-	assert.Contains(t, promptModeView, "Type your message...", "Placeholder should be visible in PromptMode")
+	// Note: the cursor ANSI styling splits "T" from "ype your message..."
+	promptModeView := m.View().Content
+	assert.Contains(t, promptModeView, "ype your message...", "Placeholder should be visible in PromptMode")
 }
 
 // Scenario 16: Press G to go to bottom of response
@@ -541,7 +542,7 @@ func TestPressShiftGToGoToBottomOfResponse(t *testing.T) {
 	m = updatedModel.(Model)
 
 	// Switch to read mode
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ = m.Update(escMsg)
 	m = updatedModel.(Model)
 
@@ -557,7 +558,7 @@ func TestPressShiftGToGoToBottomOfResponse(t *testing.T) {
 	assert.True(t, m.Viewport.AtTop(), "Should start at top")
 
 	// When the user presses "G" (shift+g)
-	gMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}}
+	gMsg := tea.KeyPressMsg{Code: 'G', Text: "G"}
 	updatedModel, _ = m.Update(gMsg)
 	m = updatedModel.(Model)
 
@@ -574,7 +575,7 @@ func TestPressGGToGoToTopOfResponse(t *testing.T) {
 	m = updatedModel.(Model)
 
 	// Switch to read mode
-	escMsg := tea.KeyMsg{Type: tea.KeyEsc}
+	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
 	updatedModel, _ = m.Update(escMsg)
 	m = updatedModel.(Model)
 
@@ -590,11 +591,11 @@ func TestPressGGToGoToTopOfResponse(t *testing.T) {
 	assert.True(t, m.Viewport.AtBottom(), "Should start at bottom")
 
 	// When the user presses "g" twice (gg)
-	gMsg1 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}}
+	gMsg1 := tea.KeyPressMsg{Code: 'g', Text: "g"}
 	updatedModel, _ = m.Update(gMsg1)
 	m = updatedModel.(Model)
 
-	gMsg2 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}}
+	gMsg2 := tea.KeyPressMsg{Code: 'g', Text: "g"}
 	updatedModel, _ = m.Update(gMsg2)
 	m = updatedModel.(Model)
 
@@ -695,8 +696,8 @@ func TestCancelCurrentRequest(t *testing.T) {
 	m.Ready = true
 	m.Width = 100
 	m.Height = 30
-	m.Viewport.Width = 100
-	m.Viewport.Height = 20
+	m.Viewport.SetWidth(100)
+	m.Viewport.SetHeight(20)
 
 	// Simulate sending a request
 	m.MessagePairs = append(m.MessagePairs, MessagePair{
@@ -714,7 +715,7 @@ func TestCancelCurrentRequest(t *testing.T) {
 	m.Textarea.Blur()
 
 	// When the user keys "ctrl-c"
-	ctrlCMsg := tea.KeyMsg{Type: tea.KeyCtrlC}
+	ctrlCMsg := tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	updatedModel, cmd := m.Update(ctrlCMsg)
 	m = updatedModel.(Model)
 
@@ -788,8 +789,8 @@ func TestCancelledIndicatorInResponseBorder(t *testing.T) {
 	m.Ready = true
 	m.Width = 100
 	m.Height = 30
-	m.Viewport.Width = 100
-	m.Viewport.Height = 20
+	m.Viewport.SetWidth(100)
+	m.Viewport.SetHeight(20)
 	r, _ := glamour.NewTermRenderer(
 		glamour.WithStandardStyle("tokyo-night"),
 		glamour.WithWordWrap(100),
@@ -809,7 +810,7 @@ func TestCancelledIndicatorInResponseBorder(t *testing.T) {
 	m.updateViewport()
 
 	// Then the view should show the cancelled indicator
-	view := m.View()
+	view := m.View().Content
 	assert.Contains(t, view, "Response (cancelled)", "Should show cancelled indicator in response border")
 	assert.Contains(t, view, "Request cancelled", "Should show cancelled message")
 }
@@ -888,8 +889,8 @@ func TestCannotEnterPromptModeWhileWaitingForResponse(t *testing.T) {
 	m.Ready = true
 	m.Width = 100
 	m.Height = 30
-	m.Viewport.Width = 100
-	m.Viewport.Height = 20
+	m.Viewport.SetWidth(100)
+	m.Viewport.SetHeight(20)
 
 	// Simulate a request in progress
 	m.MessagePairs = append(m.MessagePairs, MessagePair{
@@ -907,7 +908,7 @@ func TestCannotEnterPromptModeWhileWaitingForResponse(t *testing.T) {
 	m.Textarea.Blur()
 
 	// When the user types i to enter prompt mode
-	iMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}
+	iMsg := tea.KeyPressMsg{Code: 'i', Text: "i"}
 	updatedModel, _ := m.Update(iMsg)
 	m = updatedModel.(Model)
 
@@ -918,7 +919,7 @@ func TestCannotEnterPromptModeWhileWaitingForResponse(t *testing.T) {
 	assert.False(t, m.Textarea.Focused(), "Textarea should not be focused while waiting")
 
 	// And the view should show a waiting message
-	view := m.View()
+	view := m.View().Content
 	assert.Contains(t, view, "Waiting for response", "Should show waiting message")
 	assert.Contains(t, view, "ctrl-c to cancel", "Should show cancellation instruction")
 }
@@ -930,8 +931,8 @@ func TestTextareaAppearsWhenResponseCompletes(t *testing.T) {
 	m.Ready = true
 	m.Width = 100
 	m.Height = 30
-	m.Viewport.Width = 100
-	m.Viewport.Height = 20
+	m.Viewport.SetWidth(100)
+	m.Viewport.SetHeight(20)
 	r, _ := glamour.NewTermRenderer(
 		glamour.WithStandardStyle("tokyo-night"),
 		glamour.WithWordWrap(100),
@@ -962,7 +963,7 @@ func TestTextareaAppearsWhenResponseCompletes(t *testing.T) {
 	assert.Equal(t, ReadMode, m.Mode, "Should be in ReadMode after response")
 
 	// And when the user presses i
-	iMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}
+	iMsg := tea.KeyPressMsg{Code: 'i', Text: "i"}
 	updatedModel, _ = m.Update(iMsg)
 	m = updatedModel.(Model)
 
@@ -973,7 +974,7 @@ func TestTextareaAppearsWhenResponseCompletes(t *testing.T) {
 	assert.True(t, m.Textarea.Focused(), "Textarea should be focused in PromptMode")
 
 	// And the waiting message should not appear
-	view := m.View()
+	view := m.View().Content
 	assert.NotContains(t, view, "Waiting for response", "Should not show waiting message after completion")
 }
 
@@ -984,8 +985,8 @@ func TestResponseGoesToCorrectMessage(t *testing.T) {
 	m.Ready = true
 	m.Width = 100
 	m.Height = 30
-	m.Viewport.Width = 100
-	m.Viewport.Height = 20
+	m.Viewport.SetWidth(100)
+	m.Viewport.SetHeight(20)
 	r, _ := glamour.NewTermRenderer(
 		glamour.WithStandardStyle("tokyo-night"),
 		glamour.WithWordWrap(100),
@@ -1003,7 +1004,7 @@ func TestResponseGoesToCorrectMessage(t *testing.T) {
 	m.CurrentPairIndex = 0
 
 	// And the MSG indicator says "MSG 1/1"
-	view := m.View()
+	view := m.View().Content
 	assert.Contains(t, view, "MSG 1/1", "Should show MSG 1/1")
 
 	// When the user submits a new request (simulate enter key with text)
@@ -1011,23 +1012,23 @@ func TestResponseGoesToCorrectMessage(t *testing.T) {
 	m.Textarea.Focus()
 	m.Textarea.SetValue("Second request")
 
-	enterMsg := tea.KeyMsg{Type: tea.KeyEnter}
+	enterMsg := tea.KeyPressMsg{Code: tea.KeyEnter}
 	updatedModel, _ := m.Update(enterMsg)
 	m = updatedModel.(Model)
 
 	// Then the MSG indicator says "MSG 2/2"
-	view = m.View()
+	view = m.View().Content
 	assert.Contains(t, view, "MSG 2/2", "Should show MSG 2/2 after submitting second request")
 	assert.Equal(t, 2, len(m.MessagePairs), "Should have 2 message pairs")
 	assert.Equal(t, 1, m.CurrentPairIndex, "Should be viewing second message (index 1)")
 
 	// When the user navigates to the previous message
-	kMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'K'}}
+	kMsg := tea.KeyPressMsg{Code: 'K', Text: "K"}
 	updatedModel, _ = m.Update(kMsg)
 	m = updatedModel.(Model)
 
 	// Then the MSG indicator says "MSG 1/2"
-	view = m.View()
+	view = m.View().Content
 	assert.Contains(t, view, "MSG 1/2", "Should show MSG 1/2 after navigating back")
 	assert.Equal(t, 0, m.CurrentPairIndex, "Should be viewing first message (index 0)")
 
@@ -1057,12 +1058,12 @@ func TestResponseGoesToCorrectMessage(t *testing.T) {
 	assert.Equal(t, "Second response complete", m.MessagePairs[1].Response, "Second message should have complete response")
 
 	// When the user navigates to the latest message
-	jMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}}
+	jMsg := tea.KeyPressMsg{Code: 'J', Text: "J"}
 	updatedModel, _ = m.Update(jMsg)
 	m = updatedModel.(Model)
 
 	// Then they are viewing the second message
-	view = m.View()
+	view = m.View().Content
 	assert.Contains(t, view, "MSG 2/2", "Should show MSG 2/2")
 	assert.Equal(t, 1, m.CurrentPairIndex, "Should be viewing second message (index 1)")
 

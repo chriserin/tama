@@ -6,12 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/cursor"
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Ollama API types
@@ -116,10 +115,9 @@ func InitialModel() Model {
 	ta.SetWidth(ContentWidth - 4)
 	ta.SetHeight(1)
 	ta.ShowLineNumbers = false
-	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
-	ta.Cursor.SetMode(cursor.CursorStatic)
+	ta.SetStyles(textarea.Styles{Focused: textarea.StyleState{CursorLine: lipgloss.NewStyle()}, Cursor: textarea.CursorStyle{Blink: false}})
 
-	vp := viewport.New(ContentWidth, 20)
+	vp := viewport.New(viewport.WithWidth(ContentWidth))
 
 	// Initialize markdown renderer
 	r, _ := glamour.NewTermRenderer(
